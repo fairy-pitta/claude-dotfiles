@@ -14,17 +14,44 @@ cd ~/claude-dotfiles
 
 ### Custom Commands (`commands/`)
 
+**Sub-Agent Commands:**
 | Command | Description |
 |---------|-------------|
-| `/fix-github-issue` | Analyze and fix GitHub issues |
-| `/review-code` | Code review with suggestions |
-| `/create-pr` | Create pull request |
-| `/explain` | Explain code or concepts |
-| `/refactor` | Refactor code |
 | `/code-simplifier` | Simplify code (sub-agent) |
 | `/verify-app` | E2E verification (sub-agent) |
 | `/deep-research` | Deep research (sub-agent) |
 | `/security-check` | Security analysis (sub-agent) |
+
+**GitHub Workflow Commands:**
+| Command | Description |
+|---------|-------------|
+| `/fix-github-issue` | Analyze and fix GitHub issues |
+| `/create-pr` | Create pull request (template-aware) |
+| `/create-plan` | Create implementation plan & GitHub Issue |
+| `/exec-issue` | Execute task from GitHub Issue |
+| `/read-issue` | Read issue and create implementation plan |
+
+**Code Review Commands:**
+| Command | Description |
+|---------|-------------|
+| `/review-code` | Code review with suggestions |
+| `/read-pr-comments` | Read unresolved PR review comments |
+| `/fix-review` | Fix review points (single pass) |
+| `/fix-review-loop` | Fix review points (continuous loop) |
+| `/resolve-comments` | Resolve PR review threads |
+
+**Git Commands:**
+| Command | Description |
+|---------|-------------|
+| `/commit-push` | Strategic commit & push (squash/amend/new) |
+| `/create-worktree` | Create isolated git worktree |
+
+**Utility Commands:**
+| Command | Description |
+|---------|-------------|
+| `/explain` | Explain code or concepts |
+| `/refactor` | Refactor code |
+| `/check-library` | Look up library documentation |
 
 ### Hook Scripts (`scripts/`)
 

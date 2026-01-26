@@ -2,14 +2,76 @@
 
 Create a pull request for the current changes.
 
-Steps:
-1. Run `git status` to see all changes
-2. Run `git diff` to understand the changes
-3. Create a meaningful commit message based on the changes
-4. Push to the remote branch
-5. Create a PR using `gh pr create` with:
-   - Clear title summarizing the change
-   - Description explaining what and why
-   - Any relevant issue references
+Context: $ARGUMENTS
 
-Additional context: $ARGUMENTS
+## Process
+
+1. **Check current state**
+   ```bash
+   git status
+   git diff --staged
+   git log --oneline -5
+   ```
+
+2. **Check for PR template**
+   ```bash
+   cat .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || echo "No template found"
+   ```
+
+3. **Prepare PR content**
+
+   If template exists:
+   - Follow template structure exactly
+   - Remove all HTML comments (`<!-- ... -->`)
+   - Fill in all required sections
+
+   If no template:
+   - Use standard format below
+
+4. **Link related issues**
+   - Include `Closes #123` or `Fixes #123` in description
+   - Reference related issues with `Related to #456`
+
+5. **Create the PR**
+   ```bash
+   gh pr create --title "[type]: description" --body "..."
+   ```
+
+6. **Report PR URL**
+
+## Standard PR Format (when no template)
+
+```markdown
+## Summary
+[Brief description of changes]
+
+## Changes
+- Change 1
+- Change 2
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Manual testing completed
+
+## Related Issues
+Closes #[issue-number]
+
+## Screenshots (if UI changes)
+[Add screenshots]
+```
+
+## Title Format
+
+```
+type: concise description (max 72 chars)
+```
+
+Types: feat, fix, refactor, docs, test, chore, style, perf
+
+## Checklist Before Creating
+
+- [ ] Changes are committed and pushed
+- [ ] Branch is up to date with main
+- [ ] Tests pass
+- [ ] No merge conflicts
+- [ ] PR title follows convention
