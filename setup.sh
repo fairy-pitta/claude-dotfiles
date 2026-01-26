@@ -1,0 +1,72 @@
+#!/bin/bash
+# Claude Code Dotfiles Setup Script
+# Run this on a new machine to set up Claude Code configuration
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+
+echo "🚀 Setting up Claude Code configuration..."
+
+# Create directories
+echo "📁 Creating directories..."
+mkdir -p "$CLAUDE_DIR/commands"
+mkdir -p "$CLAUDE_DIR/scripts"
+mkdir -p "$CLAUDE_DIR/skills"
+
+# Copy configuration files
+echo "📄 Copying configuration files..."
+cp "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/" 2>/dev/null || echo "  - settings.json not found, skipping"
+cp "$SCRIPT_DIR/settings.local.json" "$CLAUDE_DIR/"
+
+# Copy commands
+echo "📝 Copying custom commands..."
+cp "$SCRIPT_DIR/commands/"*.md "$CLAUDE_DIR/commands/"
+
+# Copy scripts and make executable
+echo "🔧 Copying hook scripts..."
+cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/"
+chmod +x "$CLAUDE_DIR/scripts/"*.sh
+
+# Clone Superpowers (if not already present)
+if [ ! -d "$CLAUDE_DIR/skills/superpowers" ]; then
+  echo "⚡ Installing Superpowers skills..."
+  git clone https://github.com/obra/superpowers.git "$CLAUDE_DIR/skills/superpowers"
+else
+  echo "⚡ Superpowers already installed, updating..."
+  cd "$CLAUDE_DIR/skills/superpowers" && git pull
+fi
+
+# Set up MCP servers
+echo "🔌 Setting up MCP servers..."
+if command -v claude &> /dev/null; then
+  claude mcp add playwright -- npx @playwright/mcp@latest 2>/dev/null || echo "  - Playwright MCP may already be configured"
+
+  if command -v uvx &> /dev/null; then
+    claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project "$(pwd)" 2>/dev/null || echo "  - Serena MCP may already be configured"
+  else
+    echo "  ⚠️  uv not installed. Install it for Serena MCP: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  fi
+else
+  echo "  ⚠️  Claude Code not found. Install it first: npm install -g @anthropic-ai/claude-code"
+fi
+
+# Create Claude Code working directory
+echo "📂 Creating Claude Code working directory..."
+mkdir -p "$HOME/Claude Code"/{notes,analysis,research,dev,skills}
+touch "$HOME/Claude Code/CLAUDE.md"
+
+echo ""
+echo "✅ Setup complete!"
+echo ""
+echo "Installed:"
+echo "  - Custom commands (9 commands)"
+echo "  - Hook scripts (auto-format, deny-check)"
+echo "  - Superpowers skills (14 skills)"
+echo "  - MCP servers (Playwright, Serena)"
+echo ""
+echo "Next steps:"
+echo "  1. Restart Claude Code to load new configuration"
+echo "  2. Run '/mcp' to verify MCP servers"
+echo "  3. Type '/' to see available commands"

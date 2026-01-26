@@ -1,0 +1,69 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npx *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(open *)",
+      "WebFetch(domain:note.com)",
+      "Bash(claude --version)",
+      "Bash(node --version:*)",
+      "Bash(chmod:*)",
+      "WebSearch",
+      "Bash(uv:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(claude mcp list:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(git clone:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(chmod 777 *)",
+      "Bash(git config --global *)",
+      "Bash(git push --force *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/scripts/deny-check.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/scripts/auto-format.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/scripts/auto-format.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
