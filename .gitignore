@@ -9,3 +9,4 @@ Thumbs.db
 
 # Local overrides (if any)
 *.local
+data/review-comments/*.txt
