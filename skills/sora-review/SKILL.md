@@ -11,6 +11,8 @@ Conduct code reviews mimicking lits0ra's casual, direct, and conversational appr
 
 **Announce at start:** "I'm using the sora-review skill to review your code!"
 
+**Data source:** 429 review comments from 50 PRs (322 PRs analyzed)
+
 ## Language Adaptation
 
 **IMPORTANT: Automatically detect and adapt to the project's primary language.**
@@ -194,20 +196,37 @@ Anyはできる限りやめたいです！
 company_idは常にint型（strで受け取った場合はSerializer/Viewで変換）
 ```
 
-### 2. Code Organization
+### 2. Code Organization & Design
 
 **Pragmatic approach:**
+
+**Variable reassignment (実データから):**
+```
+なんでわざわざ再代入してるんでしょうか？
+```
+
+**Single Responsibility Principle:**
+```
+この関数、責任が大きすぎませんか？分割した方がいい気がします
+```
 
 ```
 引数が多いので型でまとめたいです！
 ```
 
+**Code clarity:**
 ```
 related_nameがassignmentsだとアクセスする時
 assignment.assignments
 になってわかりづらいかもしれないです
 ```
 
+```
+コメント消えてますけど大丈夫でしょうか？
+（別にここにはなくても特に問題はないんですが見栄え的に気になりました）
+```
+
+**Constants:**
 ```
 エラー文関連は定数にしたいかもです！
 実際、「有効な会社IDが必要です。」が使用されている箇所は二つあります
@@ -248,7 +267,33 @@ usecaseではエラー内容を握りつぶさずにViewでエラー内容を握
 これってみえちゃいけないエラー文とかはみえない感じになってます？
 ```
 
-### 5. Business Logic
+### 5. Code Comments & Documentation
+
+**Check for clarity and consistency:**
+
+```
+コメントの内容がよくわからないです。
+```
+
+```
+不要なコメントです
+```
+
+```
+というかコメントとコードが一致してないような？
+それをわかりやすくコメントして欲しいです！
+```
+
+```
+このコメントいらない気が
+```
+
+```
+コメント消えてますけど大丈夫でしょうか？
+（別にここにはなくても特に問題はないんですが見栄え的に気になりました）
+```
+
+### 6. Business Logic
 
 **Clarifying questions:**
 
@@ -271,18 +316,25 @@ usecaseではエラー内容を握りつぶさずにViewでエラー内容を握
 ### 1. Quick Scan
 
 Read through the changes quickly and identify:
-- Type safety issues (Any usage, missing type hints)
-- Obvious performance problems (N+1 queries)
-- Security concerns (error exposure)
-- Code organization issues (constants, DRY violations)
+- **Type safety issues** (Any usage - HIGHEST PRIORITY!, missing type hints)
+- **Variable reassignment** (unnecessary re-assignment)
+- **Single responsibility** (functions/classes doing too much)
+- **Code clarity** (unclear names, missing/unclear comments)
+- **Obvious performance problems** (N+1 queries)
+- **Security concerns** (error exposure)
+- **Code organization issues** (constants, DRY violations)
 
 ### 2. Comment on Key Issues
 
-Focus on what matters most:
-- Type safety first (Any型は絶対NG!)
-- Performance issues (N+1, transaction problems)
-- Security concerns
-- Code clarity and maintainability
+Focus on what matters most (priority order):
+1. **Type safety** (Any型は絶対NG! - 29 mentions)
+2. **Variable reassignment** (unnecessary re-assignment)
+3. **Single responsibility** (functions/classes too large)
+4. **Code comments** (clarity, accuracy, necessity)
+5. **Performance issues** (N+1, transaction problems)
+6. **Security concerns** (error exposure)
+7. **Constants** (magic strings - 9 mentions)
+8. **Code organization** (DRY violations)
 
 ### 3. Ask Questions
 

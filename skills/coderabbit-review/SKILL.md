@@ -11,6 +11,8 @@ Conduct code reviews mimicking CodeRabbit AI's formal, systematic approach with 
 
 **Announce at start:** "I'm using the coderabbit-review skill to perform a comprehensive code review."
 
+**Data source:** 6,328 review comments from 177 PRs (322 PRs analyzed, 17MB total)
+
 ## Language Adaptation
 
 **IMPORTANT: Automatically detect and adapt to the project's primary language.**
