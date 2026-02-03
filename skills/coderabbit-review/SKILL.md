@@ -488,6 +488,184 @@ O(N×M)になります。選択IDのSetをcomputedで持ち、O(1)判定にし�
 </details>
 ```
 
+### 13. DTO/Type Placement Consistency
+
+Check that type definitions are placed in the correct architectural layer:
+- Domain DTOs (`domain/dtos/`) for entity-like shared interfaces
+- Shared types (`shared/types/`) for cross-feature TypedDicts
+- Don't define DTOs inline in repository interfaces; keep them in dedicated files
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【要改善】SupportUserDTOの配置がdomain/dtos/と一致していません**
+
+他のDTOは `domain/dtos/` 配下に配置されていますが、このDTOだけ
+`domain/repositories/` 内に定義されています。一貫性のため `domain/dtos/supportUser.ts`
+に移動し、必要な箇所からimportしてください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- // domain/repositories/CompanyRepository.ts 内に定義
+- export interface SupportUserDTO { ... }
++ // domain/dtos/supportUser.ts に移動
++ import type { SupportUserDTO } from '@/domain/dtos/supportUser'
+```
+</details>
+```
+
+### 14. API Helper Code Deduplication
+
+Check for duplicated boilerplate across similar API helper functions.
+Common patterns to look for: CSRF header application, fetch options setup,
+HTTP error handling, response parsing. Extract shared logic into a base function.
+
+**Example comment:**
+```
+_🛠️ Refactor suggestion_ | _🟡 Minor_
+
+**【要改善】mutationRequestとvoidMutationRequestでCSRF/fetch/エラー処理が重複しています**
+
+両関数のCSRFヘッダー適用・fetch実行・HTTPエラーチェックが完全に重複しています。
+共通部分を `baseMutationFetch` に抽出し、レスポンスボディの有無だけ差分にしてください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++async function baseMutationFetch(
++  url: string, method: string, fallbackError: string, data?: unknown
++): Promise<Response> {
++  // CSRF + fetch + error check (shared logic)
++}
++
+ async function mutationRequest<TRes>(...): Promise<TRes> {
+-  // duplicated CSRF/fetch/error code
++  const res = await baseMutationFetch(url, method, fallbackError, data)
+   // response body parsing only
+ }
++
+ async function voidMutationRequest(...): Promise<void> {
+-  // duplicated CSRF/fetch/error code
++  await baseMutationFetch(url, method, fallbackError)
+ }
+```
+</details>
+```
+
+### 15. Redundant `return await` in Async Functions
+
+When an async function's only purpose is to return another promise (no try-catch wrapping it),
+`return await` is redundant. The `await` adds an unnecessary microtask.
+
+**Example comment:**
+```
+_🧹 Nitpick_ | _🔵 Trivial_
+
+**【任意】`return await` は `return` に簡略化できます**
+
+try-catchで囲んでいない場合、`return await` の `await` は不要です。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+  async createCompany(data: CreateCompanyRequest): Promise<CreateCompanyResponse> {
+-   return await createCompany(data)
++   return createCompany(data)
+  }
+```
+</details>
+```
+
+### 16. v-for Key Robustness
+
+Check that `v-for` keys use stable, unique identifiers rather than display labels
+or array indices. Static lists should have explicit `id` fields.
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【要改善】v-forのkeyにラベル文字列を使用しています**
+
+`:key="step.label"` は翻訳やラベル変更時に壊れます。
+ステップ定義に明示的なIDフィールドを追加し、それをkeyに使用してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+ const steps = [
+-  { label: '基本情報' },
++  { id: 'basic', label: '基本情報' },
+ ]
+-:key="step.label"
++:key="step.id"
+```
+</details>
+```
+
+### 17. Validation Logic DRY (shared/utils extraction)
+
+Check for duplicated validation logic (email regex, phone format, etc.) across
+components and composables. Extract to `shared/utils/validators.ts`.
+
+**Example comment:**
+```
+_🛠️ Refactor suggestion_ | _🟡 Minor_
+
+**【要改善】メールバリデーションが複数箇所で重複しています**
+
+`CompanyRegisterPage.vue` と `useContactFormValidation.ts` で同じ
+emailRegexが定義されています。`shared/utils/validators.ts` に
+`isValidEmail` を抽出して両方から参照してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++// shared/utils/validators.ts
++const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
++export const isValidEmail = (email: string): boolean => EMAIL_REGEX.test(email)
+
+ // CompanyRegisterPage.vue
+-const isValidEmail = (email: string): boolean => { ... }
++import { isValidEmail } from '@/shared/utils/validators'
+```
+</details>
+```
+
+### 18. Explicit Type Annotations on Request Objects
+
+When constructing request payload objects, annotate them with the corresponding
+request type to catch field mismatches at compile time.
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【要改善】requestDataに型アノテーションがありません**
+
+オブジェクトリテラルに `CreateCompanyRequest` 型を付けることで、
+フィールドの過不足やnullability不一致をコンパイル時に検出できます。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-const requestData = {
++const requestData: CreateCompanyRequest = {
+   name: formData.name.trim(),
+   ...
+ }
+```
+</details>
+```
+
 ## Review Process
 
 ### 1. Get Changed Files
@@ -586,6 +764,12 @@ This creates inconsistency with domain/DB constraints expecting 1900-9999 range.
 - Skip CSRF/auth header pre-processing without try-catch
 - Allow Composables to bypass DI container with direct API imports
 - Ignore O(N×M) linear searches in v-for template rendering (should use Set/Map)
+- Miss DTO/type definitions placed in wrong architectural layer (inline in repository instead of domain/dtos/)
+- Allow duplicated boilerplate across similar API helper functions (CSRF, fetch, error handling)
+- Overlook redundant `return await` in async delegation methods without try-catch
+- Accept display labels or array indices as v-for keys instead of stable IDs
+- Allow duplicated validation logic (email regex etc.) across components instead of shared/utils
+- Miss untyped request payload objects that should have explicit type annotations
 
 ## Integration with Development Workflow
 
