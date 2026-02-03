@@ -266,8 +266,9 @@ Remove the unused UUID import: delete the line importing UUID since it is not re
 
 Check for:
 - Presentation layer (pages/components) directly importing from Infrastructure (API modules)
-- Must go through Composables/UseCases: `UI → Composable → API`
-- Type-only imports from Infrastructure are acceptable
+- Composables directly importing from Infrastructure API instead of Repository Interface + DI
+- Must follow: `UI → Composable → Repository IF ← Repository Impl → API`
+- Type-only imports from Infrastructure are acceptable (runtime dependency is the problem)
 
 **Example comment:**
 ```
@@ -389,6 +390,104 @@ _⚠️ Potential issue_ | _🟠 Major_
 </details>
 ```
 
+### 10. CSRF/Auth Header Error Normalization
+
+Check for:
+- `CsrfTokenManager.applyCsrfHeaders()` or similar auth pre-processing without try-catch
+- Auth token refresh/retrieval that can throw before the main fetch
+- Any pre-request setup that can fail with unhandled English error messages
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】CSRFヘッダー取得失敗時の例外が統一されません**
+
+`CsrfTokenManager.applyCsrfHeaders`の例外が未捕捉のため、
+UIに英語メッセージが露出する可能性があります。
+ネットワーク例外と同様にfallbackErrorへ正規化してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-  await CsrfTokenManager.applyCsrfHeaders(method, headers, '/api')
++  try {
++    await CsrfTokenManager.applyCsrfHeaders(method, headers, '/api')
++  } catch {
++    throw new Error(fallbackError)
++  }
+```
+</details>
+```
+
+### 11. Composable DI Pattern Compliance
+
+Check for:
+- Composables importing directly from `@/infrastructure/api/` instead of using DI container
+- Missing Repository Interface methods that force direct API imports
+- Domain types defined in Infrastructure layer instead of Domain/Shared layer
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】ComposableがInfrastructure APIに直接依存しています**
+
+Composableから`@/infrastructure/api/`を直接importしており、テスト差し替えが
+困難です。Repository IFにメソッドを追加し、`diContainer.get()`経由で
+呼び出す形に修正してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-import { createCompany } from '@/infrastructure/api/CompanyApi'
+-import { fetchSupportUsers } from '@/infrastructure/api/SupportUserApi'
++import { diContainer } from '@/infrastructure/di/DIContainer'
++
++import type { SupportUserDTO } from '@/domain/repositories/CompanyRepository'
+
+ export const useCompanyRegister = () => {
+-  const registerCompany = async (data) => await createCompany(data)
++  const repository = diContainer.get('CompanyRepository')
++  const registerCompany = async (data) => await repository.createCompany(data)
+```
+</details>
+```
+
+### 12. Template Rendering Performance
+
+Check for:
+- `v-for` 内で `.some()` / `.includes()` / `.find()` を使った O(N×M) 線形探索
+- 大量データのリスト描画で毎レンダリングごとに繰り返し検索が走る構造
+- `computed` で `Set` / `Map` を構築して O(1) 判定に最適化すべき箇所
+
+**Example comment:**
+```
+_🧹 Nitpick_ | _🔵 Trivial_
+
+**【推奨修正】選択判定が線形探索のため大量データで重くなります**
+
+`isUserSelected`が行ごとに`.some()`を実行しており、支援ユーザ数が多いと
+O(N×M)になります。選択IDのSetをcomputedで持ち、O(1)判定にしてください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++const selectedUserIds = computed<Set<number>>(
++  () => new Set(selectedSupportUsers.value.map(u => u.user_id))
++)
++
+ const isUserSelected = (userId: number): boolean => {
+-  return selectedSupportUsers.value.some(u => u.user_id === userId)
++  return selectedUserIds.value.has(userId)
+ }
+```
+</details>
+```
+
 ## Review Process
 
 ### 1. Get Changed Files
@@ -484,6 +583,9 @@ This creates inconsistency with domain/DB constraints expecting 1900-9999 range.
 - Ignore bare fetch()/JSON.parse() without try-catch in API helpers
 - Miss untyped computed() or ref() in Vue components
 - Allow uncaught async errors in onMounted/initialization code
+- Skip CSRF/auth header pre-processing without try-catch
+- Allow Composables to bypass DI container with direct API imports
+- Ignore O(N×M) linear searches in v-for template rendering (should use Set/Map)
 
 ## Integration with Development Workflow
 
