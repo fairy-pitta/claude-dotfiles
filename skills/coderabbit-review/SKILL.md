@@ -262,6 +262,133 @@ Remove the unused UUID import: delete the line importing UUID since it is not re
 </details>
 ```
 
+### 6. Frontend Layer Dependencies
+
+Check for:
+- Presentation layer (pages/components) directly importing from Infrastructure (API modules)
+- Must go through Composables/UseCases: `UI → Composable → API`
+- Type-only imports from Infrastructure are acceptable
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】Presentation層がInfrastructure APIに直接依存しています**
+
+ページコンポーネントから`@/infrastructure/api/`を直接importしており、
+依存方向が逆転しています。Composable経由でAPI呼び出しを行ってください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-import { createCompany } from '@/infrastructure/api/CompanyApi'
+-import { fetchSupportUsers } from '@/infrastructure/api/SupportUserApi'
++import { useCompanyRegister } from '@/presentation/composables/useCompanyRegister'
++
++const { registerCompany, loadSupportUsers } = useCompanyRegister()
+```
+</details>
+```
+
+### 7. API Error Normalization
+
+Check for:
+- Bare `fetch()` calls without try-catch (network errors propagate as raw TypeError)
+- `JSON.parse()` without try-catch (parse errors propagate as raw SyntaxError)
+- Error helpers that don't normalize all failure paths to user-friendly messages
+- Mixed language error messages (English technical errors leaking to Japanese UI)
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】ネットワーク/JSON解析失敗時のエラーメッセージが統一されません**
+
+`fetch`の例外やJSON.parse失敗がそのまま伝播し、画面に英語のTypeError/SyntaxErrorが
+表示される可能性があります。ネットワーク例外はfallbackError、JSON解析失敗は
+INVALID_RESPONSEに正規化してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-  const res = await fetch(url, { method, credentials: 'include', headers })
++  let res: Response
++  try {
++    res = await fetch(url, { method, credentials: 'include', headers })
++  } catch {
++    throw new Error(fallbackError)
++  }
+@@
+-  return JSON.parse(text) as TRes
++  try {
++    return JSON.parse(text) as TRes
++  } catch {
++    throw new Error(ERROR_MESSAGES.COMPANY.INVALID_RESPONSE)
++  }
+```
+</details>
+```
+
+### 8. Frontend Type Annotations
+
+Check for:
+- `computed()` without explicit generic type parameter
+- `ref()` without type annotation when type is not obvious from initial value
+- Missing return type annotations on composable functions
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【必須修正】computedの戻り型を明示してください**
+
+`filteredSupportUsers`は戻り型注釈がなく、型安全性ポリシーに反しています。
+`computed<SupportUser[]>`のように明示的に指定してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-const filteredSupportUsers = computed(() => {
++const filteredSupportUsers = computed<SupportUser[]>(() => {
+```
+</details>
+```
+
+### 9. Initialization Error Handling
+
+Check for:
+- `onMounted` / `onBeforeMount` 内の非同期呼び出しがtry-catchなし
+- 複数の初期化呼び出しで1つの失敗が後続を阻害する構造
+- 初期化エラーがUIに表示されない（submitErrorとinitErrorsの混同）
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】地域データ取得失敗時の初期化エラーが表示されません**
+
+`onMounted`内の`fetchRegions`が未捕捉のため、初期化が途中で落ちたり
+エラーバナーに表示されません。try-catchで捕捉してinitErrorsに追加してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+   if (regionStore.regions.length === 0) {
+-    await regionStore.fetchRegions()
++    try {
++      await regionStore.fetchRegions()
++    } catch {
++      initErrors.value.push(ERROR_MESSAGES.REGION.FETCH_FAILED)
++    }
+   }
+```
+</details>
+```
+
 ## Review Process
 
 ### 1. Get Changed Files
@@ -353,6 +480,10 @@ This creates inconsistency with domain/DB constraints expecting 1900-9999 range.
 - Approve code with missing type hints
 - Skip providing code diffs for suggestions
 - Give vague feedback without specific line references
+- Overlook Presentation → Infrastructure direct imports (must go through Composable)
+- Ignore bare fetch()/JSON.parse() without try-catch in API helpers
+- Miss untyped computed() or ref() in Vue components
+- Allow uncaught async errors in onMounted/initialization code
 
 ## Integration with Development Workflow
 
