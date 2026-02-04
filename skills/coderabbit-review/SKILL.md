@@ -1043,6 +1043,10 @@ After reviewing all files, provide:
 
 ## Red Flags - Never Do This
 
+**General (レビュー品質):**
+- Skip severity indicators on review comments
+- Provide feedback without actionable suggestions (code diffs)
+
 **Group A (型安全性):**
 - Allow `Any` type usage without comment (backend and frontend)
 - Approve code with missing type hints
