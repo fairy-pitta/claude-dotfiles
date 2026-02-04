@@ -1,84 +1,27 @@
 ---
 name: reviewer
-description: PR inline code review - posts individual review comments directly on GitHub PR diff, each on the exact code line
+description: PR inline code review - runs coderabbit-review then posts each comment directly on the GitHub PR diff as individual inline comments
 ---
 
 # PR Inline Reviewer
 
-Perform a code review and **post each comment directly on the PR as an inline review comment** on the corresponding code line using `gh api`.
+Run a `coderabbit-review` style code review, then **post each finding directly on the PR as an individual inline comment** on the corresponding code line using `gh api`.
 
-**Core principle:** Review the code, then post each finding as an individual inline comment on the PR diff — not as one big summary comment.
+**Core principle:** Leverage the coderabbit-review skill for thorough analysis, then deliver results as inline PR comments — not as one big summary comment.
 
 **Announce at start:** "I'm using the reviewer skill to review and post inline comments on the PR."
 
-## Language Adaptation
-
-**IMPORTANT: Automatically detect and adapt to the project's primary language.**
-
-**Detection method:**
-1. Check CLAUDE.md for language indicators
-2. Check user's message language
-3. Check recent commit messages language
-4. Default to English if unclear
-
-**Language-specific formatting:**
-
-**Japanese:**
-- Titles: 【要改善】、【必須修正】、【任意】、【確認依頼】
-- Summary labels: 修正案、改善案、提案
-- Polite forms: ください、お願いします
-
-**English:**
-- Titles: [Required Fix], [Improvement Needed], [Optional], [Please Confirm]
-- Summary labels: Fix suggestion, Improvement suggestion, Proposal
-- Professional tone: please, should, recommended
-
-## Comment Format
-
-Every review comment MUST follow this format:
+## Workflow Overview
 
 ```
-_<category>_ | _<severity>_
-
-**<title>**
-
-<detailed explanation>
-
-<details>
-<summary>icon 修正案 / 改善案 / 提案</summary>
-
-```diff
-<code diff showing before/after>
-```
-</details>
+Step 1: Identify PR and get metadata (PR number, commit SHA, owner/repo)
+Step 2: Perform code review using coderabbit-review methodology
+Step 3: Get numbered diff and calculate positions for each finding
+Step 4: Post each finding as an inline comment via gh api
+Step 5: Post a summary comment on the PR
 ```
 
-### Severity Indicators
-
-- **🔴 Critical** - Must fix before merge (security, data loss, crashes)
-- **🟠 Major** - Should fix, impacts functionality (performance, architecture violations, type safety)
-- **🟡 Minor** - Nice to have improvements (refactoring, minor optimizations)
-- **🔵 Trivial** - Code style/cleanup (unused imports, formatting)
-
-### Category Labels
-
-- `_⚠️ Potential issue_` - Logic/design problems, bugs, incorrect implementations
-- `_🧹 Nitpick_` - Code quality, style, cleanup suggestions
-- `_🛠️ Refactor suggestion_` - Architecture improvements, pattern recommendations
-
-## Review Focus Areas
-
-Check changed files for:
-1. **Type Safety** - Missing type hints, `Any` usage, type inconsistencies across layers
-2. **Architecture Compliance** - Layer dependency violations, feature inter-dependencies (check CLAUDE.md)
-3. **Error Handling** - Missing validation, uncaught exceptions, error message leaks
-4. **Performance** - N+1 queries, O(N*M) in templates, redundant awaits
-5. **Code Quality** - DRY violations, unused code, dead code, comment accuracy
-6. **Accessibility** - Missing ARIA attributes, semantic HTML issues (for frontend)
-
-## Review Process
-
-### Step 1: Identify PR and Get Metadata
+## Step 1: Identify PR and Get Metadata
 
 ```bash
 # Find the PR for the current branch
@@ -88,22 +31,37 @@ gh pr list --head "$BRANCH" --state open --json number,title,url
 # Get the latest commit SHA
 COMMIT_SHA=$(gh pr view <PR_NUMBER> --json headRefOid --jq '.headRefOid')
 
+# Get owner/repo
+gh repo view --json nameWithOwner --jq '.nameWithOwner'
+# Returns: "owner/repo"
+
 # Get changed files
-gh pr diff <PR_NUMBER> --name-only
-# or
 git diff --name-only origin/<base_branch>...HEAD
 ```
 
 If no PR exists, inform the user and stop.
 
-### Step 2: Review the Code
+## Step 2: Perform Code Review
 
-1. Get the cumulative diff: `git diff origin/<base_branch>...HEAD`
-2. Read each changed file fully to understand context
-3. Check against CLAUDE.md rules and the Review Focus Areas above
-4. Collect all findings with their target file and line number
+**Use the coderabbit-review methodology** for the review itself. This means:
 
-### Step 3: Calculate Diff Positions
+1. Get the diff: `git diff origin/<base_branch>...HEAD`
+2. Read each changed file to understand context
+3. Apply the **5-pass grouped review** (Groups A-E, 27 review points) from coderabbit-review:
+   - **Group A:** Type Safety (Any type, layer type consistency, FE annotations, etc.)
+   - **Group B:** Architecture & Placement (feature dependencies, layer violations, Result type, etc.)
+   - **Group C:** Error Handling & Security (validation, API error normalization, etc.)
+   - **Group D:** Performance (N+1 queries, O(N*M) in templates, redundant awaits)
+   - **Group E:** Code Quality & DRY (unused code, dead code, v-for keys, comment accuracy, etc.)
+4. Use the coderabbit-review **comment format** (category + severity + title + explanation + diff suggestion)
+5. Check against CLAUDE.md project rules
+
+For each finding, record:
+- The comment body (in coderabbit-review format)
+- The target file path
+- The target line number in the file
+
+## Step 3: Calculate Diff Positions
 
 The GitHub API requires a `position` parameter (not a file line number) to place inline comments. The position is calculated from the diff output.
 
@@ -139,7 +97,7 @@ position = target_diff_line_number - first_@@_line_number_for_that_file
 - Position counting continues across multiple `@@` hunks within the same file (positions do NOT reset at each hunk)
 - The first `@@` line of the file is the reference point (position 0); all subsequent lines count from there
 
-### Step 4: Post Inline Comments
+## Step 4: Post Inline Comments
 
 Use `gh api` to post each comment individually on the exact code line:
 
@@ -156,7 +114,7 @@ JSONEOF
 ```
 
 **Parameters:**
-- `body`: The review comment in markdown (use the Comment Format above)
+- `body`: The review comment in coderabbit-review format (category + severity + explanation + diff)
 - `commit_id`: The HEAD commit SHA of the PR
 - `path`: Relative file path from repo root (e.g., `frontend/src/components/Foo.vue`)
 - `position`: The calculated position in the diff (see Step 3)
@@ -169,7 +127,7 @@ gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments \
   --method POST -f body="<comment body>"
 ```
 
-### Step 5: Post Summary Comment
+## Step 5: Post Summary Comment
 
 After all inline comments are posted, post a summary as a general PR comment:
 
@@ -196,14 +154,6 @@ EOF
 
 ## Practical Tips
 
-### Getting Owner/Repo
-
-```bash
-# Extract from git remote
-gh repo view --json nameWithOwner --jq '.nameWithOwner'
-# Returns: "owner/repo"
-```
-
 ### JSON Escaping in Comment Body
 
 When the comment body contains special characters (quotes, backticks, newlines), use `--input -` with a heredoc and proper JSON:
@@ -228,27 +178,33 @@ JSONEOF
 
 ### Verifying Position Accuracy
 
-Before posting, you can verify a position is correct by checking what line it maps to:
+Before posting, verify a position is correct by checking what line it maps to:
 1. Find the file's first `@@` in the numbered diff output
 2. Add the position to get the target diff line number
 3. Confirm that line contains the code you want to comment on
 
 ### Handling Errors
 
-If `gh api` returns a 422 error with "position is not valid", it means:
+If `gh api` returns a 422 error with "position is not valid":
 - The calculated position doesn't fall within a diff hunk
 - The line you're targeting is not part of the changed diff
-- Solution: Either recalculate the position or post as a general PR comment instead
+- Solution: Recalculate the position or post as a general PR comment instead
+
+If `gh api` returns a 422 error with `"subject_type" is not a permitted key`:
+- Do NOT use `line`, `side`, or `subject_type` parameters
+- Use only `body`, `commit_id`, `path`, and `position`
 
 ## Red Flags - Never Do This
 
 - **Never post all comments as a single summary** — each finding must be an individual inline comment on the specific code line
 - **Never guess positions** — always calculate from the actual diff output
 - **Never skip the diff position calculation** — using file line numbers directly will fail
-- **Never post comments without severity and category indicators**
+- **Never use the `line` or `subject_type` API parameters** — use `position` only
+- **Never post comments without severity and category indicators** (coderabbit-review format required)
 - **Never post comments without actionable code diff suggestions**
 - **Never post on lines outside the diff** — use general PR comments for those
+- **Never skip the coderabbit-review 5-pass review** — this skill's value is combining thorough review with precise PR delivery
 
 ---
 
-**Remember:** The power of this skill is that each comment appears directly on the code line in the PR diff view, making it easy for developers to see exactly what needs attention and where.
+**Remember:** This skill combines the thoroughness of coderabbit-review with the precision of inline PR comments. Each comment appears directly on the code line in the PR diff view, making it easy for developers to see exactly what needs attention and where.
