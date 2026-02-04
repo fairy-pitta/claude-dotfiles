@@ -666,6 +666,33 @@ _⚠️ Potential issue_ | _🟡 Minor_
 </details>
 ```
 
+### 19. DI Container Get Type Annotation
+
+When using a DI container's `get()` method, even if the container is generically typed,
+add an explicit type annotation to the variable for readability and to guard against
+registry misconfiguration.
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【推奨修正】DI取得の型を明示して型安全性を担保してください**
+
+`diContainer.get(...)` の戻り値に明示的な型アノテーションを付けることで、
+コードの可読性が向上し、レジストリの設定ミスにも気づきやすくなります。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++import type { CompanyRepository } from '@/domain/repositories/CompanyRepository'
++
+-const repository = diContainer.get('CompanyRepository')
++const repository: CompanyRepository = diContainer.get('CompanyRepository')
+```
+</details>
+```
+
 ## Review Process
 
 ### 1. Get Changed Files
@@ -770,6 +797,7 @@ This creates inconsistency with domain/DB constraints expecting 1900-9999 range.
 - Accept display labels or array indices as v-for keys instead of stable IDs
 - Allow duplicated validation logic (email regex etc.) across components instead of shared/utils
 - Miss untyped request payload objects that should have explicit type annotations
+- Allow DI container `get()` calls without explicit type annotation on the receiving variable
 
 ## Integration with Development Workflow
 
