@@ -14,26 +14,56 @@ PRの未解決レビューコメントを修正し、得られた知見を coder
 
 ## Phase 1: 未解決コメントの取得
 
-```bash
-# 現在のブランチのPRを特定
-gh pr view --json number,title,url
+> **注意:** `gh pr view --json reviewThreads` は存在しないフィールドでエラーになる。
+> 行コメント（レビュースレッド）の取得には **GraphQL API** を使う必要がある。
 
-# 未解決のレビュースレッドを取得
-gh pr view --json reviewThreads --jq '
-  .reviewThreads[]
-  | select(.isResolved == false)
-  | {
-      id: .id,
-      path: .path,
-      line: .line,
-      author: .comments[0].author.login,
-      body: .comments[0].body
-    }
-'
+### Step 1-1: PR情報の取得
+
+```bash
+# 現在のブランチに紐づくPRの番号・タイトル・URLを取得
+gh pr view --json number,title,url
 ```
 
-- コメントがなければ「未解決コメントはありません」と報告して終了
-- コメントがあれば一覧をユーザーに提示してから修正に入る
+エラーが出た場合（PRが存在しない等）はユーザーに報告して終了。
+
+### Step 1-2: リポジトリのowner/nameを取得
+
+```bash
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+PR_NUM=$(gh pr view --json number --jq '.number')
+```
+
+### Step 1-3: GraphQL APIで未解決レビュースレッドを取得
+
+```bash
+QUERY="query { repository(owner: \"${OWNER}\", name: \"${REPO}\") { pullRequest(number: ${PR_NUM}) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 10) { nodes { author { login } body createdAt } } } } } } }"
+
+gh api graphql -f query="$QUERY" \
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)]'
+```
+
+**よくある失敗パターンと対処:**
+- `reviewThreads` フィールドがないエラー → `gh pr view` ではなく上記の GraphQL を使う
+- 認証エラー → `gh auth status` で確認
+- jq パースエラー → `--jq` を外して生JSONを確認し、構造を目視チェック
+
+### Step 1-4: 各スレッドの情報を整形して表示
+
+```bash
+gh api graphql -f query="$QUERY" \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+    | select(.isResolved == false)
+    | {
+        path,
+        line,
+        author: .comments.nodes[0].author.login,
+        body: .comments.nodes[0].body
+      }'
+```
+
+- 結果が空なら「未解決コメントはありません」と報告して終了
+- コメントがあれば件数とファイル一覧をユーザーに提示してから修正に入る
 
 ## Phase 2: コメントの修正
 
