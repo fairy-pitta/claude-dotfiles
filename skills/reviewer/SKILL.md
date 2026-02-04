@@ -18,7 +18,6 @@ Step 1: Identify PR and get metadata (PR number, commit SHA, owner/repo)
 Step 2: Perform code review using coderabbit-review methodology
 Step 3: Get numbered diff and calculate positions for each finding
 Step 4: Post each finding as an inline comment via gh api
-Step 5: Post a summary comment on the PR
 ```
 
 ## Step 1: Identify PR and Get Metadata
@@ -125,31 +124,6 @@ Post as a general PR comment instead:
 ```bash
 gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments \
   --method POST -f body="<comment body>"
-```
-
-## Step 5: Post Summary Comment
-
-After all inline comments are posted, post a summary as a general PR comment:
-
-```bash
-gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments \
-  --method POST -f body="$(cat <<'EOF'
-## Review Summary
-
-**Actionable comments posted: <N>**
-
-### Severity Distribution
-- 🔴 Critical: <N>
-- 🟠 Major: <N>
-- 🟡 Minor: <N>
-- 🔵 Trivial: <N>
-
-### Recommendations
-1. **Must fix before merge:** [Critical/Major items]
-2. **Should fix:** [Minor items]
-3. **Optional:** [Trivial items]
-EOF
-)"
 ```
 
 ## Practical Tips
