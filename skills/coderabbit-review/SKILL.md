@@ -96,43 +96,19 @@ Use these category prefixes:
 
 ## Review Focus Areas
 
-### 1. Architecture Compliance
+Review Focus Areas are organized into 5 groups (A〜E).
+Review is performed one group at a time across all changed files (5-pass approach).
 
-Check against CLAUDE.md rules:
-- Feature inter-dependencies (other features should use shared/)
-- Domain layer must be Django/DRF-free
-- Transactions at UseCase layer only
-- 1 class = 1 file principle
+---
 
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟠 Major_
+### Group A: 型安全性 (Type Safety)
 
-**【要改善】organization への直接依存はアーキテクチャルール違反の可能性**
-
-suspension → organization の直接依存（`Company`/`CompanyRepository`）は
-「他Featureへの直接依存禁止」に抵触します。ACL（変換層）や suspension 側の
-インターフェース/DTO を介して依存方向を内向きにしてください。
-
-<details>
-<summary>🔧 修正案（依存方向の是正例）</summary>
-
-```diff
-- from app.features.organization.domain.entities import Company
-- from app.features.organization.domain.repositories import CompanyRepository
-+ from app.features.suspension.domain.interfaces import CompanyInterface
-+ from app.features.suspension.infrastructure.acl import OrganizationACL
-```
-</details>
-```
-
-### 2. Type Safety
+#### 1. Any型禁止
 
 Check for:
 - Missing type hints (Protocol, TypedDict, Generic required)
 - `Any` type usage (forbidden per guidelines)
 - Enum usage for status/category fields
-- Result type unpacking (must use tuple unpacking, not `.error` attribute)
 
 **Example comment:**
 ```
@@ -160,12 +136,534 @@ _⚠️ Potential issue_ | _🟠 Major_
 </details>
 ```
 
-### 3. Database Performance
+#### 2. レイヤー間の型一貫性
+
+Check for:
+- Same concept using different types across layers (e.g. `year` as `str` in View but `int` in UseCase)
+- Type conversion not happening at the boundary (Serializer/View layer)
+- Inconsistent field types between DTO, Entity, and API response
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】yearの型がレイヤー間で不一致です**
+
+View層では `str` 型で受け取っていますが、UseCase層では `int` 型を期待しています。
+Serializer/View層で型変換を行い、UseCase以降は `int` 型に統一してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+  # View layer: convert at boundary
+- year = request.data.get("year")  # str
++ year = int(request.data.get("year"))  # int
+  result, error = usecase.execute(GetSummaryRequest(year=year))
+```
+</details>
+```
+
+#### 3. Frontend型アノテーション
+
+Check for:
+- `computed()` without explicit generic type parameter
+- `ref()` without type annotation when type is not obvious from initial value
+- Missing return type annotations on composable functions
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【必須修正】computedの戻り型を明示してください**
+
+`filteredSupportUsers`は戻り型注釈がなく、型安全性ポリシーに反しています。
+`computed<SupportUser[]>`のように明示的に指定してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-const filteredSupportUsers = computed(() => {
++const filteredSupportUsers = computed<SupportUser[]>(() => {
+```
+</details>
+```
+
+#### 4. リクエスト型明示
+
+When constructing request payload objects, annotate them with the corresponding
+request type to catch field mismatches at compile time.
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【要改善】requestDataに型アノテーションがありません**
+
+オブジェクトリテラルに `CreateCompanyRequest` 型を付けることで、
+フィールドの過不足やnullability不一致をコンパイル時に検出できます。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-const requestData = {
++const requestData: CreateCompanyRequest = {
+   name: formData.name.trim(),
+   ...
+ }
+```
+</details>
+```
+
+#### 5. DI Container Get型明示
+
+When using a DI container's `get()` method, even if the container is generically typed,
+add an explicit type annotation to the variable for readability and to guard against
+registry misconfiguration.
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【推奨修正】DI取得の型を明示して型安全性を担保してください**
+
+`diContainer.get(...)` の戻り値に明示的な型アノテーションを付けることで、
+コードの可読性が向上し、レジストリの設定ミスにも気づきやすくなります。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++import type { CompanyRepository } from '@/domain/repositories/CompanyRepository'
++
+-const repository = diContainer.get('CompanyRepository')
++const repository: CompanyRepository = diContainer.get('CompanyRepository')
+```
+</details>
+```
+
+#### 6. Django統合時のAny回避
+
+Django Model/Manager統合時にAnyを使わないパターン。
+`**kwargs: Any` を `TypedDict` + `Unpack` で型安全にする。
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】Djangoオーバーライドメソッドの**kwargs: Anyを型安全にしてください**
+
+`Model.save()` や `create_user()` の `**kwargs: Any` は
+`TypedDict` + `Unpack` で置き換えることでアプリ側の型安全性を確保できます。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++ from typing import TypedDict, Unpack
++
++ class SaveKwargs(TypedDict, total=False):
++     force_insert: bool
++     force_update: bool
++     update_fields: list[str] | None
++
+- def save(self, **kwargs: Any) -> None:
++ def save(self, **kwargs: Unpack[SaveKwargs]) -> None:
+```
+</details>
+```
+
+---
+
+### Group B: アーキテクチャ・配置 (Architecture & Placement)
+
+#### 7. アーキテクチャ準拠
+
+Check against CLAUDE.md rules:
+- Feature inter-dependencies (other features should use shared/)
+- Domain layer must be Django/DRF-free
+- 1 class = 1 file principle
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【要改善】organization への直接依存はアーキテクチャルール違反の可能性**
+
+suspension → organization の直接依存（`Company`/`CompanyRepository`）は
+「他Featureへの直接依存禁止」に抵触します。ACL（変換層）や suspension 側の
+インターフェース/DTO を介して依存方向を内向きにしてください。
+
+<details>
+<summary>🔧 修正案（依存方向の是正例）</summary>
+
+```diff
+- from app.features.organization.domain.entities import Company
+- from app.features.organization.domain.repositories import CompanyRepository
++ from app.features.suspension.domain.interfaces import CompanyInterface
++ from app.features.suspension.infrastructure.acl import OrganizationACL
+```
+</details>
+```
+
+#### 8. FEレイヤー依存
+
+Check for:
+- Presentation layer (pages/components) directly importing from Infrastructure (API modules)
+- Must follow: `UI → Composable → Repository IF ← Repository Impl → API`
+- Type-only imports from Infrastructure are acceptable (runtime dependency is the problem)
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】Presentation層がInfrastructure APIに直接依存しています**
+
+ページコンポーネントから`@/infrastructure/api/`を直接importしており、
+依存方向が逆転しています。Composable経由でAPI呼び出しを行ってください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-import { createCompany } from '@/infrastructure/api/CompanyApi'
++import { useCompanyRegister } from '@/presentation/composables/useCompanyRegister'
++
++const { registerCompany, loadSupportUsers } = useCompanyRegister()
+```
+</details>
+```
+
+#### 9. Composable DIパターン準拠
+
+Check for:
+- Composables importing directly from `@/infrastructure/api/` instead of using DI container
+- Missing Repository Interface methods that force direct API imports
+- Domain types defined in Infrastructure layer instead of Domain/Shared layer
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】ComposableがInfrastructure APIに直接依存しています**
+
+Composableから`@/infrastructure/api/`を直接importしており、テスト差し替えが
+困難です。Repository IFにメソッドを追加し、`diContainer.get()`経由で
+呼び出す形に修正してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-import { createCompany } from '@/infrastructure/api/CompanyApi'
++import { diContainer } from '@/infrastructure/di/DIContainer'
++
+ export const useCompanyRegister = () => {
+-  const registerCompany = async (data) => await createCompany(data)
++  const repository = diContainer.get('CompanyRepository')
++  const registerCompany = async (data) => repository.createCompany(data)
+```
+</details>
+```
+
+#### 10. DTO配置の一貫性
+
+Check that type definitions are placed in the correct architectural layer:
+- Domain DTOs (`domain/dtos/`) for entity-like shared interfaces
+- Shared types (`shared/types/`) for cross-feature TypedDicts
+- Don't define DTOs inline in repository interfaces; keep them in dedicated files
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【要改善】SupportUserDTOの配置がdomain/dtos/と一致していません**
+
+他のDTOは `domain/dtos/` 配下に配置されていますが、このDTOだけ
+`domain/repositories/` 内に定義されています。一貫性のため `domain/dtos/supportUser.ts`
+に移動し、必要な箇所からimportしてください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- // domain/repositories/CompanyRepository.ts 内に定義
+- export interface SupportUserDTO { ... }
++ // domain/dtos/supportUser.ts に移動
++ import type { SupportUserDTO } from '@/domain/dtos/supportUser'
+```
+</details>
+```
+
+#### 11. ファイル配置の適切性
+
+Check that code is placed in the correct location:
+- Shared utilities belong in `shared/` not inside a feature
+- Enums belong in `domain/enums/`
+- Error constants belong in `shared/constants/`
+- Types used by 3+ features must be in `shared/types/`
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】shared配下に配置すべきコードがfeature内にあります**
+
+このユーティリティは3つ以上のfeatureから参照されています。
+`shared/` 配下の適切な場所に移動してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- // features/organization/utils/date_helper.py
++ // shared/utils/date_helper.py
+```
+</details>
+```
+
+#### 12. Result型タプルアンパック
+
+Result型は必ずタプルアンパックで受け取る。
+`.error` 属性アクセスや `result[0]`/`result[1]` のインデックスアクセスは禁止。
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】Result型をインデックスアクセスで使用しています**
+
+`result[0]`, `result[1]` のインデックスアクセスは可読性が低く、
+プロジェクトルールに反しています。タプルアンパックで受け取ってください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- result = usecase.execute(request)
+- if result[1] is not None:
+-     return ApiResponse.error(result[1])
+- return ApiResponse.success(result[0])
++ value, error = usecase.execute(request)
++ if error is not None:
++     return ApiResponse.error(error)
++ return ApiResponse.success(value)
+```
+</details>
+```
+
+#### 13. トランザクション境界
+
+Transactions must be managed at UseCase layer only.
+Repository layer must NOT contain `transaction.atomic()`.
+`select_for_update` requires a transaction to be active.
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】Repository層にtransaction.atomic()が配置されています**
+
+トランザクション管理はUseCase層のみで行うルールです。
+Repository層から `transaction.atomic()` を除去し、UseCase側で管理してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+  # UseCase layer
++ from django.db import transaction
++
+  def execute(self, request):
++     with transaction.atomic():
+          self._repository.update(...)
+          self._repository.create(...)
+
+  # Repository layer
+- from django.db import transaction
+  def update(self, entity):
+-     with transaction.atomic():
+-         model.save()
++     model.save()
+```
+</details>
+```
+
+---
+
+### Group C: エラーハンドリング・セキュリティ (Error Handling & Security)
+
+#### 14. バリデーション・エラーハンドリング
+
+Check for:
+- Input validation completeness
+- Custom exception vs generic Exception
+- Error message clarity and use of constants
+- Internal error information leaking to users (security concern)
+- UseCase層でエラー内容を握り潰さず、View層で外部向けメッセージに変換
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【要改善】yearの範囲(1900〜9999)の検証が不足しています**
+
+yearが0以下のみチェックされ、1899や10000が通過します。ドメイン/DBの
+「1900〜9999」前提と不整合になり得るため、範囲チェックを追加してください。
+
+<details>
+<summary>修正案</summary>
+
+```diff
++ MIN_YEAR = 1900
++ MAX_YEAR = 9999
++
+  if year <= 0:
+      return failure(ValueError(ValidationErrors.YEAR_FORMAT_INVALID))
++ if year < MIN_YEAR or year > MAX_YEAR:
++     return failure(ValueError(ValidationErrors.YEAR_OUT_OF_RANGE))
+```
+</details>
+```
+
+#### 15. APIエラー正規化
+
+Check for:
+- Bare `fetch()` calls without try-catch (network errors propagate as raw TypeError)
+- `JSON.parse()` without try-catch (parse errors propagate as raw SyntaxError)
+- Error helpers that don't normalize all failure paths to user-friendly messages
+- Mixed language error messages (English technical errors leaking to Japanese UI)
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】ネットワーク/JSON解析失敗時のエラーメッセージが統一されません**
+
+`fetch`の例外やJSON.parse失敗がそのまま伝播し、画面に英語のTypeError/SyntaxErrorが
+表示される可能性があります。ネットワーク例外はfallbackError、JSON解析失敗は
+INVALID_RESPONSEに正規化してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-  const res = await fetch(url, { method, credentials: 'include', headers })
++  let res: Response
++  try {
++    res = await fetch(url, { method, credentials: 'include', headers })
++  } catch {
++    throw new Error(fallbackError)
++  }
+```
+</details>
+```
+
+#### 16. 初期化エラーハンドリング
+
+Check for:
+- `onMounted` / `onBeforeMount` 内の非同期呼び出しがtry-catchなし
+- 複数の初期化呼び出しで1つの失敗が後続を阻害する構造
+- 初期化エラーがUIに表示されない（submitErrorとinitErrorsの混同）
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】地域データ取得失敗時の初期化エラーが表示されません**
+
+`onMounted`内の`fetchRegions`が未捕捉のため、初期化が途中で落ちたり
+エラーバナーに表示されません。try-catchで捕捉してinitErrorsに追加してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+   if (regionStore.regions.length === 0) {
+-    await regionStore.fetchRegions()
++    try {
++      await regionStore.fetchRegions()
++    } catch {
++      initErrors.value.push(ERROR_MESSAGES.REGION.FETCH_FAILED)
++    }
+   }
+```
+</details>
+```
+
+#### 17. CSRF/Auth正規化
+
+Check for:
+- `CsrfTokenManager.applyCsrfHeaders()` or similar auth pre-processing without try-catch
+- Auth token refresh/retrieval that can throw before the main fetch
+- Any pre-request setup that can fail with unhandled English error messages
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】CSRFヘッダー取得失敗時の例外が統一されません**
+
+`CsrfTokenManager.applyCsrfHeaders`の例外が未捕捉のため、
+UIに英語メッセージが露出する可能性があります。
+ネットワーク例外と同様にfallbackErrorへ正規化してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+-  await CsrfTokenManager.applyCsrfHeaders(method, headers, '/api')
++  try {
++    await CsrfTokenManager.applyCsrfHeaders(method, headers, '/api')
++  } catch {
++    throw new Error(fallbackError)
++  }
+```
+</details>
+```
+
+#### 18. ビジネスロジック計算検証
+
+Check for:
+- Calculation logic matching business specifications
+- Edge cases: closing month, starting date on last day of month, leap years
+- Accounting month (`YYYY-MM`) format correctness including special month 13
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【要改善】期首日(starting_date)を考慮した月計算が不足しています**
+
+会計月の算出で `closing_month` は参照されていますが、
+`starting_date` が1日以外の場合に月がズレる可能性があります。
+エッジケースのテストも追加してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+  def calculate_accounting_month(date, closing_month, starting_date):
++     # starting_date考慮: 期首日より前の日付は前月に属する
++     if date.day < starting_date:
++         date = date - relativedelta(months=1)
+      relative_month = (date.month - closing_month - 1) % 12 + 1
+```
+</details>
+```
+
+---
+
+### Group D: パフォーマンス (Performance)
+
+#### 19. DBパフォーマンス
 
 Check for:
 - N+1 query problems
 - Missing `select_related()` / `prefetch_related()`
-- Lack of query batching
+- Lack of query batching (`bulk_create` / `bulk_update`)
 - Unnecessary query executions
 
 **Example comment:**
@@ -195,39 +693,68 @@ _⚠️ Potential issue_ | _🟠 Major_
 </details>
 ```
 
-### 4. Validation & Error Handling
+#### 20. テンプレート描画パフォーマンス
 
 Check for:
-- Input validation completeness
-- Custom exception vs generic Exception
-- Error message clarity
-- Use of constants for error messages
+- `v-for` 内で `.some()` / `.includes()` / `.find()` を使った O(N×M) 線形探索
+- 大量データのリスト描画で毎レンダリングごとに繰り返し検索が走る構造
+- `computed` で `Set` / `Map` を構築して O(1) 判定に最適化すべき箇所
 
 **Example comment:**
 ```
-_⚠️ Potential issue_ | _🟠 Major_
+_🧹 Nitpick_ | _🔵 Trivial_
 
-**【要改善】yearの範囲(1900〜9999)の検証が不足しています**
+**【推奨修正】選択判定が線形探索のため大量データで重くなります**
 
-yearが0以下のみチェックされ、1899や10000が通過します。ドメイン/DBの
-「1900〜9999」前提と不整合になり得るため、範囲チェックを追加してください。
+`isUserSelected`が行ごとに`.some()`を実行しており、支援ユーザ数が多いと
+O(N×M)になります。選択IDのSetをcomputedで持ち、O(1)判定にしてください。
 
 <details>
-<summary>修正案</summary>
+<summary>🔧 修正案</summary>
 
 ```diff
-+ MIN_YEAR = 1900
-+ MAX_YEAR = 9999
++const selectedUserIds = computed<Set<number>>(
++  () => new Set(selectedSupportUsers.value.map(u => u.user_id))
++)
 +
-  if year <= 0:
-      return failure(ValueError(ValidationErrors.YEAR_FORMAT_INVALID))
-+ if year < MIN_YEAR or year > MAX_YEAR:
-+     return failure(ValueError(ValidationErrors.YEAR_OUT_OF_RANGE))
+ const isUserSelected = (userId: number): boolean => {
+-  return selectedSupportUsers.value.some(u => u.user_id === userId)
++  return selectedUserIds.value.has(userId)
+ }
 ```
 </details>
 ```
 
-### 5. Code Organization
+#### 21. 冗長な return await
+
+When an async function's only purpose is to return another promise (no try-catch wrapping it),
+`return await` is redundant. The `await` adds an unnecessary microtask.
+
+**Example comment:**
+```
+_🧹 Nitpick_ | _🔵 Trivial_
+
+**【任意】`return await` は `return` に簡略化できます**
+
+try-catchで囲んでいない場合、`return await` の `await` は不要です。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+  async createCompany(data: CreateCompanyRequest): Promise<CreateCompanyResponse> {
+-   return await createCompany(data)
++   return createCompany(data)
+  }
+```
+</details>
+```
+
+---
+
+### Group E: コード品質・DRY (Code Quality & DRY)
+
+#### 22. コード構成
 
 Check for:
 - DRY principle violations
@@ -262,262 +789,7 @@ Remove the unused UUID import: delete the line importing UUID since it is not re
 </details>
 ```
 
-### 6. Frontend Layer Dependencies
-
-Check for:
-- Presentation layer (pages/components) directly importing from Infrastructure (API modules)
-- Composables directly importing from Infrastructure API instead of Repository Interface + DI
-- Must follow: `UI → Composable → Repository IF ← Repository Impl → API`
-- Type-only imports from Infrastructure are acceptable (runtime dependency is the problem)
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【必須修正】Presentation層がInfrastructure APIに直接依存しています**
-
-ページコンポーネントから`@/infrastructure/api/`を直接importしており、
-依存方向が逆転しています。Composable経由でAPI呼び出しを行ってください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
--import { createCompany } from '@/infrastructure/api/CompanyApi'
--import { fetchSupportUsers } from '@/infrastructure/api/SupportUserApi'
-+import { useCompanyRegister } from '@/presentation/composables/useCompanyRegister'
-+
-+const { registerCompany, loadSupportUsers } = useCompanyRegister()
-```
-</details>
-```
-
-### 7. API Error Normalization
-
-Check for:
-- Bare `fetch()` calls without try-catch (network errors propagate as raw TypeError)
-- `JSON.parse()` without try-catch (parse errors propagate as raw SyntaxError)
-- Error helpers that don't normalize all failure paths to user-friendly messages
-- Mixed language error messages (English technical errors leaking to Japanese UI)
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【必須修正】ネットワーク/JSON解析失敗時のエラーメッセージが統一されません**
-
-`fetch`の例外やJSON.parse失敗がそのまま伝播し、画面に英語のTypeError/SyntaxErrorが
-表示される可能性があります。ネットワーク例外はfallbackError、JSON解析失敗は
-INVALID_RESPONSEに正規化してください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
--  const res = await fetch(url, { method, credentials: 'include', headers })
-+  let res: Response
-+  try {
-+    res = await fetch(url, { method, credentials: 'include', headers })
-+  } catch {
-+    throw new Error(fallbackError)
-+  }
-@@
--  return JSON.parse(text) as TRes
-+  try {
-+    return JSON.parse(text) as TRes
-+  } catch {
-+    throw new Error(ERROR_MESSAGES.COMPANY.INVALID_RESPONSE)
-+  }
-```
-</details>
-```
-
-### 8. Frontend Type Annotations
-
-Check for:
-- `computed()` without explicit generic type parameter
-- `ref()` without type annotation when type is not obvious from initial value
-- Missing return type annotations on composable functions
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟡 Minor_
-
-**【必須修正】computedの戻り型を明示してください**
-
-`filteredSupportUsers`は戻り型注釈がなく、型安全性ポリシーに反しています。
-`computed<SupportUser[]>`のように明示的に指定してください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
--const filteredSupportUsers = computed(() => {
-+const filteredSupportUsers = computed<SupportUser[]>(() => {
-```
-</details>
-```
-
-### 9. Initialization Error Handling
-
-Check for:
-- `onMounted` / `onBeforeMount` 内の非同期呼び出しがtry-catchなし
-- 複数の初期化呼び出しで1つの失敗が後続を阻害する構造
-- 初期化エラーがUIに表示されない（submitErrorとinitErrorsの混同）
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【必須修正】地域データ取得失敗時の初期化エラーが表示されません**
-
-`onMounted`内の`fetchRegions`が未捕捉のため、初期化が途中で落ちたり
-エラーバナーに表示されません。try-catchで捕捉してinitErrorsに追加してください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-   if (regionStore.regions.length === 0) {
--    await regionStore.fetchRegions()
-+    try {
-+      await regionStore.fetchRegions()
-+    } catch {
-+      initErrors.value.push(ERROR_MESSAGES.REGION.FETCH_FAILED)
-+    }
-   }
-```
-</details>
-```
-
-### 10. CSRF/Auth Header Error Normalization
-
-Check for:
-- `CsrfTokenManager.applyCsrfHeaders()` or similar auth pre-processing without try-catch
-- Auth token refresh/retrieval that can throw before the main fetch
-- Any pre-request setup that can fail with unhandled English error messages
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【必須修正】CSRFヘッダー取得失敗時の例外が統一されません**
-
-`CsrfTokenManager.applyCsrfHeaders`の例外が未捕捉のため、
-UIに英語メッセージが露出する可能性があります。
-ネットワーク例外と同様にfallbackErrorへ正規化してください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
--  await CsrfTokenManager.applyCsrfHeaders(method, headers, '/api')
-+  try {
-+    await CsrfTokenManager.applyCsrfHeaders(method, headers, '/api')
-+  } catch {
-+    throw new Error(fallbackError)
-+  }
-```
-</details>
-```
-
-### 11. Composable DI Pattern Compliance
-
-Check for:
-- Composables importing directly from `@/infrastructure/api/` instead of using DI container
-- Missing Repository Interface methods that force direct API imports
-- Domain types defined in Infrastructure layer instead of Domain/Shared layer
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【必須修正】ComposableがInfrastructure APIに直接依存しています**
-
-Composableから`@/infrastructure/api/`を直接importしており、テスト差し替えが
-困難です。Repository IFにメソッドを追加し、`diContainer.get()`経由で
-呼び出す形に修正してください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
--import { createCompany } from '@/infrastructure/api/CompanyApi'
--import { fetchSupportUsers } from '@/infrastructure/api/SupportUserApi'
-+import { diContainer } from '@/infrastructure/di/DIContainer'
-+
-+import type { SupportUserDTO } from '@/domain/repositories/CompanyRepository'
-
- export const useCompanyRegister = () => {
--  const registerCompany = async (data) => await createCompany(data)
-+  const repository = diContainer.get('CompanyRepository')
-+  const registerCompany = async (data) => await repository.createCompany(data)
-```
-</details>
-```
-
-### 12. Template Rendering Performance
-
-Check for:
-- `v-for` 内で `.some()` / `.includes()` / `.find()` を使った O(N×M) 線形探索
-- 大量データのリスト描画で毎レンダリングごとに繰り返し検索が走る構造
-- `computed` で `Set` / `Map` を構築して O(1) 判定に最適化すべき箇所
-
-**Example comment:**
-```
-_🧹 Nitpick_ | _🔵 Trivial_
-
-**【推奨修正】選択判定が線形探索のため大量データで重くなります**
-
-`isUserSelected`が行ごとに`.some()`を実行しており、支援ユーザ数が多いと
-O(N×M)になります。選択IDのSetをcomputedで持ち、O(1)判定にしてください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-+const selectedUserIds = computed<Set<number>>(
-+  () => new Set(selectedSupportUsers.value.map(u => u.user_id))
-+)
-+
- const isUserSelected = (userId: number): boolean => {
--  return selectedSupportUsers.value.some(u => u.user_id === userId)
-+  return selectedUserIds.value.has(userId)
- }
-```
-</details>
-```
-
-### 13. DTO/Type Placement Consistency
-
-Check that type definitions are placed in the correct architectural layer:
-- Domain DTOs (`domain/dtos/`) for entity-like shared interfaces
-- Shared types (`shared/types/`) for cross-feature TypedDicts
-- Don't define DTOs inline in repository interfaces; keep them in dedicated files
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟡 Minor_
-
-**【要改善】SupportUserDTOの配置がdomain/dtos/と一致していません**
-
-他のDTOは `domain/dtos/` 配下に配置されていますが、このDTOだけ
-`domain/repositories/` 内に定義されています。一貫性のため `domain/dtos/supportUser.ts`
-に移動し、必要な箇所からimportしてください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-- // domain/repositories/CompanyRepository.ts 内に定義
-- export interface SupportUserDTO { ... }
-+ // domain/dtos/supportUser.ts に移動
-+ import type { SupportUserDTO } from '@/domain/dtos/supportUser'
-```
-</details>
-```
-
-### 14. API Helper Code Deduplication
+#### 23. APIヘルパー重複排除
 
 Check for duplicated boilerplate across similar API helper functions.
 Common patterns to look for: CSRF header application, fetch options setup,
@@ -556,60 +828,7 @@ _🛠️ Refactor suggestion_ | _🟡 Minor_
 </details>
 ```
 
-### 15. Redundant `return await` in Async Functions
-
-When an async function's only purpose is to return another promise (no try-catch wrapping it),
-`return await` is redundant. The `await` adds an unnecessary microtask.
-
-**Example comment:**
-```
-_🧹 Nitpick_ | _🔵 Trivial_
-
-**【任意】`return await` は `return` に簡略化できます**
-
-try-catchで囲んでいない場合、`return await` の `await` は不要です。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-  async createCompany(data: CreateCompanyRequest): Promise<CreateCompanyResponse> {
--   return await createCompany(data)
-+   return createCompany(data)
-  }
-```
-</details>
-```
-
-### 16. v-for Key Robustness
-
-Check that `v-for` keys use stable, unique identifiers rather than display labels
-or array indices. Static lists should have explicit `id` fields.
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟡 Minor_
-
-**【要改善】v-forのkeyにラベル文字列を使用しています**
-
-`:key="step.label"` は翻訳やラベル変更時に壊れます。
-ステップ定義に明示的なIDフィールドを追加し、それをkeyに使用してください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
- const steps = [
--  { label: '基本情報' },
-+  { id: 'basic', label: '基本情報' },
- ]
--:key="step.label"
-+:key="step.id"
-```
-</details>
-```
-
-### 17. Validation Logic DRY (shared/utils extraction)
+#### 24. バリデーションDRY
 
 Check for duplicated validation logic (email regex, phone format, etc.) across
 components and composables. Extract to `shared/utils/validators.ts`.
@@ -639,59 +858,94 @@ emailRegexが定義されています。`shared/utils/validators.ts` に
 </details>
 ```
 
-### 18. Explicit Type Annotations on Request Objects
+#### 25. v-forキー堅牢性
 
-When constructing request payload objects, annotate them with the corresponding
-request type to catch field mismatches at compile time.
-
-**Example comment:**
-```
-_⚠️ Potential issue_ | _🟡 Minor_
-
-**【要改善】requestDataに型アノテーションがありません**
-
-オブジェクトリテラルに `CreateCompanyRequest` 型を付けることで、
-フィールドの過不足やnullability不一致をコンパイル時に検出できます。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
--const requestData = {
-+const requestData: CreateCompanyRequest = {
-   name: formData.name.trim(),
-   ...
- }
-```
-</details>
-```
-
-### 19. DI Container Get Type Annotation
-
-When using a DI container's `get()` method, even if the container is generically typed,
-add an explicit type annotation to the variable for readability and to guard against
-registry misconfiguration.
+Check that `v-for` keys use stable, unique identifiers rather than display labels
+or array indices. Static lists should have explicit `id` fields.
 
 **Example comment:**
 ```
 _⚠️ Potential issue_ | _🟡 Minor_
 
-**【推奨修正】DI取得の型を明示して型安全性を担保してください**
+**【要改善】v-forのkeyにラベル文字列を使用しています**
 
-`diContainer.get(...)` の戻り値に明示的な型アノテーションを付けることで、
-コードの可読性が向上し、レジストリの設定ミスにも気づきやすくなります。
+`:key="step.label"` は翻訳やラベル変更時に壊れます。
+ステップ定義に明示的なIDフィールドを追加し、それをkeyに使用してください。
 
 <details>
 <summary>🔧 修正案</summary>
 
 ```diff
-+import type { CompanyRepository } from '@/domain/repositories/CompanyRepository'
-+
--const repository = diContainer.get('CompanyRepository')
-+const repository: CompanyRepository = diContainer.get('CompanyRepository')
+ const steps = [
+-  { label: '基本情報' },
++  { id: 'basic', label: '基本情報' },
+ ]
+-:key="step.label"
++:key="step.id"
 ```
 </details>
 ```
+
+#### 26. デッドコード・未使用変数
+
+Check for:
+- Unused imports, variables, functions, type definitions
+- Dead code paths that can never be reached
+- Commented-out code blocks
+- These should be caught in self-review
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【必須修正】未使用の型定義が残っています**
+
+`CompanyFilterType` は定義されていますが、どこからも参照されていません。
+デッドコードはセルフレビューで弾いてください。削除をお願いします。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- type CompanyFilterType = {
+-   name: string
+-   region: string
+- }
+```
+</details>
+```
+
+#### 27. コメントの品質
+
+Check for:
+- Comments that don't match the code they describe
+- Unnecessary comments (code is self-explanatory)
+- Missing comments where logic is non-obvious
+- Comments in wrong language (project uses Japanese)
+
+**Example comment:**
+```
+_🧹 Nitpick_ | _🔵 Trivial_
+
+**【任意】コメントの内容がコードと一致していません**
+
+コメントでは「一括取得」と記述されていますが、
+実際にはループ内で1件ずつ取得しています。
+コメントを実装に合わせて修正するか、実装をコメント通りに変更してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- # 一括取得
++ # LargeItemごとに取得（TODO: 一括取得に最適化）
+  for large_item in sorted_large_items:
+      sub_categories = self._repository.get_sub_categories(large_item.id)
+```
+</details>
+```
+
+---
 
 ## Review Process
 
@@ -702,15 +956,51 @@ _⚠️ Potential issue_ | _🟡 Minor_
 git diff --name-only origin/dev...HEAD
 ```
 
-### 2. Analyze Each File
+### 2. 5-Pass Grouped Review
 
-For each changed file:
-1. Read the full file
-2. Check against architecture rules (CLAUDE.md)
-3. Verify type safety
-4. Check for performance issues
-5. Validate error handling
-6. Check code organization
+Review all changed files once per group. Each pass focuses on a specific group of concerns.
+
+**Pass 1 — Group A: 型安全性**
+For each changed file, check:
+- Any型使用 (#1)
+- レイヤー間の型不一致 (#2)
+- FE computed/ref型注釈 (#3)
+- リクエスト型アノテーション (#4)
+- DI Container取得の型明示 (#5)
+- Django統合時のAny回避 (#6)
+
+**Pass 2 — Group B: アーキテクチャ・配置**
+For each changed file, check:
+- Feature間依存・レイヤー違反 (#7)
+- FE Presentation→Infrastructure直接依存 (#8)
+- Composable DIパターン準拠 (#9)
+- DTO配置の一貫性 (#10)
+- ファイル配置の適切性 (#11)
+- Result型のタプルアンパック (#12)
+- トランザクション境界の配置 (#13)
+
+**Pass 3 — Group C: エラーハンドリング・セキュリティ**
+For each changed file, check:
+- バリデーション・エラー処理・情報漏洩 (#14)
+- APIエラー正規化 (#15)
+- 初期化エラーハンドリング (#16)
+- CSRF/Auth正規化 (#17)
+- ビジネスロジック計算の正確性 (#18)
+
+**Pass 4 — Group D: パフォーマンス**
+For each changed file, check:
+- N+1クエリ・バッチ処理不足 (#19)
+- テンプレート描画のO(N×M)探索 (#20)
+- 冗長なreturn await (#21)
+
+**Pass 5 — Group E: コード品質・DRY**
+For each changed file, check:
+- 未使用import・関数定義順序 (#22)
+- APIヘルパーの重複 (#23)
+- バリデーションロジックの重複 (#24)
+- v-forキーの堅牢性 (#25)
+- デッドコード・未使用変数 (#26)
+- コメントの品質・正確性 (#27)
 
 ### 3. Generate Summary
 
@@ -729,16 +1019,19 @@ After reviewing all files, provide:
 
 ### Key Findings
 
-**Architecture:**
+**Group A (型安全性):**
+- [List type safety issues]
+
+**Group B (アーキテクチャ):**
 - [List architecture issues]
 
-**Type Safety:**
-- [List type issues]
+**Group C (エラーハンドリング):**
+- [List error handling issues]
 
-**Performance:**
+**Group D (パフォーマンス):**
 - [List performance issues]
 
-**Code Quality:**
+**Group E (コード品質):**
 - [List code quality issues]
 
 ### Recommendations
@@ -748,56 +1041,46 @@ After reviewing all files, provide:
 3. **Optional improvements:** [Trivial issues]
 ```
 
-## Example Review (English)
-
-```markdown
-_⚠️ Potential issue_ | _🟠 Major_
-
-**[Required Fix] Year range validation (1900-9999) is insufficient**
-
-Currently only checks for year <= 0, allowing invalid values like 1899 or 10000 to pass through.
-This creates inconsistency with domain/DB constraints expecting 1900-9999 range.
-
-<details>
-<summary>Fix suggestion</summary>
-
-```diff
-+ MIN_YEAR = 1900
-+ MAX_YEAR = 9999
-+
-  if year <= 0:
-      return failure(ValueError(ValidationErrors.YEAR_FORMAT_INVALID))
-+ if year < MIN_YEAR or year > MAX_YEAR:
-+     return failure(ValueError(ValidationErrors.YEAR_OUT_OF_RANGE))
-```
-</details>
-```
-
 ## Red Flags - Never Do This
 
-**Never:**
-- Skip severity indicators
-- Provide feedback without actionable suggestions
-- Ignore architecture violations
-- Allow `Any` type usage without comment
-- Miss N+1 query problems
+**Group A (型安全性):**
+- Allow `Any` type usage without comment (backend and frontend)
 - Approve code with missing type hints
-- Skip providing code diffs for suggestions
-- Give vague feedback without specific line references
-- Overlook Presentation → Infrastructure direct imports (must go through Composable)
-- Ignore bare fetch()/JSON.parse() without try-catch in API helpers
-- Miss untyped computed() or ref() in Vue components
-- Allow uncaught async errors in onMounted/initialization code
-- Skip CSRF/auth header pre-processing without try-catch
+- Ignore type inconsistency across layers (str vs int for same field)
+- Miss untyped `computed()` or `ref()` in Vue components
+- Allow untyped request payload objects
+- Allow DI container `get()` calls without explicit type annotation
+- Let Django `**kwargs: Any` pass without TypedDict+Unpack suggestion
+
+**Group B (アーキテクチャ・配置):**
+- Ignore architecture violations (feature inter-dependencies, domain layer Django imports)
+- Overlook Presentation → Infrastructure direct imports
 - Allow Composables to bypass DI container with direct API imports
-- Ignore O(N×M) linear searches in v-for template rendering (should use Set/Map)
-- Miss DTO/type definitions placed in wrong architectural layer (inline in repository instead of domain/dtos/)
-- Allow duplicated boilerplate across similar API helper functions (CSRF, fetch, error handling)
-- Overlook redundant `return await` in async delegation methods without try-catch
-- Accept display labels or array indices as v-for keys instead of stable IDs
-- Allow duplicated validation logic (email regex etc.) across components instead of shared/utils
-- Miss untyped request payload objects that should have explicit type annotations
-- Allow DI container `get()` calls without explicit type annotation on the receiving variable
+- Miss DTO/type definitions placed in wrong architectural layer
+- Ignore files placed in wrong location (should be in shared/)
+- Allow Result type indexed access (`result[0]`) instead of tuple unpacking
+- Miss `transaction.atomic()` in Repository layer (must be UseCase only)
+
+**Group C (エラーハンドリング・セキュリティ):**
+- Ignore bare `fetch()`/`JSON.parse()` without try-catch in API helpers
+- Allow uncaught async errors in `onMounted`/initialization code
+- Skip CSRF/auth header pre-processing without try-catch
+- Allow internal error information to leak to users
+- Miss missing validation for edge cases in business logic calculations
+
+**Group D (パフォーマンス):**
+- Miss N+1 query problems
+- Ignore O(N×M) linear searches in `v-for` template rendering
+- Overlook redundant `return await` in async delegation methods
+
+**Group E (コード品質・DRY):**
+- Allow duplicated boilerplate across similar API helper functions
+- Allow duplicated validation logic across components
+- Accept display labels or array indices as `v-for` keys instead of stable IDs
+- Miss dead code, unused variables, or unused type definitions
+- Ignore comments that don't match the code they describe
+- Give vague feedback without specific line references
+- Skip providing code diffs for suggestions
 
 ## Integration with Development Workflow
 
