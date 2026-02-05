@@ -624,7 +624,62 @@ UIに英語メッセージが露出する可能性があります。
 </details>
 ```
 
-#### 18. ビジネスロジック計算検証
+#### 18. Serializerの機密フィールド設定
+
+Check for:
+- Password fields without `write_only=True` (can leak in serialized responses)
+- Token/secret fields exposed in API responses
+- Sensitive data that should never be returned to clients
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【推奨修正】パスワードフィールドに `write_only=True` を追加**
+
+パスワードフィールドはリクエスト専用であり、レスポンスに含めるべきではありません。
+`write_only=True` を指定することで、シリアライズ時にパスワードが誤って漏洩するリスクを防げます。
+
+<details>
+<summary>🛡️ 修正案</summary>
+
+```diff
+-    current_password = serializers.CharField(required=True)
+-    new_password = serializers.CharField(required=True)
++    current_password = serializers.CharField(required=True, write_only=True)
++    new_password = serializers.CharField(required=True, write_only=True)
+```
+</details>
+```
+
+#### 19. DB変更後のオブジェクト同期
+
+Check for:
+- Using in-memory objects after DB update without `refresh_from_db()`
+- Session auth hash updates with stale user objects
+- Cache invalidation issues after model saves
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】DB更新後のオブジェクトを同期してください**
+
+UseCaseでDB上のパスワードは更新されますが、`request.user`は古いハッシュのままです。
+`update_session_auth_hash()` は渡されたuserオブジェクトのパスワードでセッションハッシュを
+生成するため、このままだと次リクエストでセッションが破棄されます。
+
+<details>
+<summary>修正案</summary>
+
+```diff
++    request.user.refresh_from_db()
+     update_session_auth_hash(request, request.user)
+```
+</details>
+```
+
+#### 20. ビジネスロジック計算検証
 
 Check for:
 - Calculation logic matching business specifications
@@ -658,7 +713,7 @@ _⚠️ Potential issue_ | _🟠 Major_
 
 ### Group D: パフォーマンス (Performance)
 
-#### 19. DBパフォーマンス
+#### 21. DBパフォーマンス
 
 Check for:
 - N+1 query problems
@@ -693,7 +748,7 @@ _⚠️ Potential issue_ | _🟠 Major_
 </details>
 ```
 
-#### 20. テンプレート描画パフォーマンス
+#### 22. テンプレート描画パフォーマンス
 
 Check for:
 - `v-for` 内で `.some()` / `.includes()` / `.find()` を使った O(N×M) 線形探索
@@ -725,7 +780,7 @@ O(N×M)になります。選択IDのSetをcomputedで持ち、O(1)判定にし�
 </details>
 ```
 
-#### 21. 冗長な return await
+#### 23. 冗長な return await
 
 When an async function's only purpose is to return another promise (no try-catch wrapping it),
 `return await` is redundant. The `await` adds an unnecessary microtask.
@@ -754,7 +809,7 @@ try-catchで囲んでいない場合、`return await` の `await` は不要で�
 
 ### Group E: コード品質・DRY (Code Quality & DRY)
 
-#### 22. コード構成
+#### 24. コード構成
 
 Check for:
 - DRY principle violations
@@ -789,7 +844,7 @@ Remove the unused UUID import: delete the line importing UUID since it is not re
 </details>
 ```
 
-#### 23. APIヘルパー重複排除
+#### 25. APIヘルパー重複排除
 
 Check for duplicated boilerplate across similar API helper functions.
 Common patterns to look for: CSRF header application, fetch options setup,
@@ -828,7 +883,7 @@ _🛠️ Refactor suggestion_ | _🟡 Minor_
 </details>
 ```
 
-#### 24. バリデーションDRY
+#### 26. バリデーションDRY
 
 Check for duplicated validation logic (email regex, phone format, etc.) across
 components and composables. Extract to `shared/utils/validators.ts`.
@@ -858,7 +913,7 @@ emailRegexが定義されています。`shared/utils/validators.ts` に
 </details>
 ```
 
-#### 25. v-forキー堅牢性
+#### 28. v-forキー堅牢性
 
 Check that `v-for` keys use stable, unique identifiers rather than display labels
 or array indices. Static lists should have explicit `id` fields.
@@ -886,7 +941,7 @@ _⚠️ Potential issue_ | _🟡 Minor_
 </details>
 ```
 
-#### 26. デッドコード・未使用変数
+#### 29. デッドコード・未使用変数
 
 Check for:
 - Unused imports, variables, functions, type definitions
@@ -915,7 +970,43 @@ _⚠️ Potential issue_ | _🟡 Minor_
 </details>
 ```
 
-#### 27. コメントの品質
+#### 27. エラーメッセージ定数の一貫性
+
+Check for:
+- Hardcoded values in error messages that should reference constants
+- Inconsistent use of placeholders across similar messages
+- Magic numbers that duplicate values from domain constants
+
+**Example comment:**
+```
+_🧹 Nitpick_ | _🔵 Trivial_
+
+**PASSWORD_TOO_WEAK メッセージ内の「8文字以上」を定数参照に修正**
+
+`PASSWORD_TOO_WEAK` に「8文字以上」がハードコードされていますが、
+`DomainMagicNumbers.MIN_PASSWORD_LENGTH` と整合性を保つため動的に参照してください。
+
+<details>
+<summary>修正案</summary>
+
+```diff
+  PASSWORD_TOO_WEAK = (
+-     "パスワードは8文字以上で、小文字・大文字・数字・特殊文字を含む必要があります"
++     "パスワードは{min_length}文字以上で、小文字・大文字・数字・特殊文字を含む必要があります"
+  )
+
+  # 使用箇所
+- raise ValidationError(UserErrors.PASSWORD_TOO_WEAK)
++ raise ValidationError(
++     UserErrors.PASSWORD_TOO_WEAK.format(
++         min_length=DomainMagicNumbers.MIN_PASSWORD_LENGTH
++     )
++ )
+```
+</details>
+```
+
+#### 30. コメントの品質
 
 Check for:
 - Comments that don't match the code they describe
@@ -985,22 +1076,25 @@ For each changed file, check:
 - APIエラー正規化 (#15)
 - 初期化エラーハンドリング (#16)
 - CSRF/Auth正規化 (#17)
-- ビジネスロジック計算の正確性 (#18)
+- Serializerの機密フィールド設定 (#18)
+- DB変更後のオブジェクト同期 (#19)
+- ビジネスロジック計算の正確性 (#20)
 
 **Pass 4 — Group D: パフォーマンス**
 For each changed file, check:
-- N+1クエリ・バッチ処理不足 (#19)
-- テンプレート描画のO(N×M)探索 (#20)
-- 冗長なreturn await (#21)
+- N+1クエリ・バッチ処理不足 (#21)
+- テンプレート描画のO(N×M)探索 (#22)
+- 冗長なreturn await (#23)
 
 **Pass 5 — Group E: コード品質・DRY**
 For each changed file, check:
-- 未使用import・関数定義順序 (#22)
-- APIヘルパーの重複 (#23)
-- バリデーションロジックの重複 (#24)
-- v-forキーの堅牢性 (#25)
-- デッドコード・未使用変数 (#26)
-- コメントの品質・正確性 (#27)
+- 未使用import・関数定義順序 (#24)
+- APIヘルパーの重複 (#25)
+- バリデーションロジックの重複 (#26)
+- エラーメッセージ定数の一貫性 (#27)
+- v-forキーの堅牢性 (#28)
+- デッドコード・未使用変数 (#29)
+- コメントの品質・正確性 (#30)
 
 ### 3. Generate Summary
 
@@ -1071,6 +1165,8 @@ After reviewing all files, provide:
 - Skip CSRF/auth header pre-processing without try-catch
 - Allow internal error information to leak to users
 - Miss missing validation for edge cases in business logic calculations
+- Allow password/token fields in Serializer without `write_only=True`
+- Miss stale in-memory objects after DB updates (missing `refresh_from_db()`)
 
 **Group D (パフォーマンス):**
 - Miss N+1 query problems
@@ -1080,6 +1176,7 @@ After reviewing all files, provide:
 **Group E (コード品質・DRY):**
 - Allow duplicated boilerplate across similar API helper functions
 - Allow duplicated validation logic across components
+- Allow hardcoded values in error messages that should reference domain constants
 - Accept display labels or array indices as `v-for` keys instead of stable IDs
 - Miss dead code, unused variables, or unused type definitions
 - Ignore comments that don't match the code they describe
