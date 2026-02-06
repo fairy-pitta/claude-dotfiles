@@ -709,6 +709,32 @@ UseCaseでDB上のパスワードは更新されますが、`request.user`は古
 </details>
 ```
 
+#### 19a. Django request.user のID参照
+
+Check for:
+- Using `request.user.user_id` instead of Django標準の `request.user.pk`
+- Custom ID field access that may break with different User model configurations
+- Non-standard user attribute access patterns
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟡 Minor_
+
+**【要改善】request.user.pkを使用してください**
+
+`request.user.user_id` はカスタム属性であり、Djangoの標準的な
+ユーザーモデル実装と互換性がありません。`request.user.pk` を使用してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- user_id=request.user.user_id,
++ user_id=request.user.pk,
+```
+</details>
+```
+
 #### 20. ビジネスロジック計算検証
 
 Check for:
@@ -1066,6 +1092,72 @@ _🧹 Nitpick_ | _🔵 Trivial_
 </details>
 ```
 
+#### 31. テストコードの品質
+
+Check for:
+- Class-based tests instead of function-based tests (pytest style)
+- Using bare `Mock()` instead of `create_autospec()` for type-safe mocking
+- Hardcoded values in assertions that should reference domain constants
+- Test function naming not following `test_{method}_{scenario}_returns_{expected}` pattern
+
+**Example comment:**
+```
+_🛠️ Refactor suggestion_ | _🟡 Minor_
+
+**【要改善】テストを関数ベースに変更し、create_autospecを使用してください**
+
+クラスベーステスト(`class TestXxx`)ではなく、関数ベーステストを使用してください。
+また、`Mock()`ではなく`create_autospec()`を使うことで、モックが実際のインターフェースと
+一致することを型レベルで保証できます。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- from unittest.mock import Mock
++ from unittest.mock import create_autospec
++ import pytest
+
+- class TestChangePasswordUseCase:
+-     def test_success(self) -> None:
+-         repo = Mock()
++ @pytest.fixture
++ def mock_repo() -> UserRepository:
++     return create_autospec(UserRepository, instance=True)
++
++ def test_change_password_execute_valid_credentials_returns_true(
++     mock_repo: UserRepository
++ ) -> None:
+```
+</details>
+```
+
+**Example comment (定数検証):**
+```
+_🧹 Nitpick_ | _🔵 Trivial_
+
+**【要改善】テストのアサーションにハードコード値ではなく定数を使用してください**
+
+エラーメッセージの検証で「8文字以上」をハードコードしていますが、
+`DomainMagicNumbers.MIN_PASSWORD_LENGTH` を参照することで、
+定数変更時にテストが自動的に追従します。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++ from app.shared.constants import DomainMagicNumbers
++
+  def test_weak_password_returns_error(...):
+-     assert "8文字以上" in str(error)
++     expected_error = UserErrors.PASSWORD_TOO_WEAK.format(
++         min_length=DomainMagicNumbers.MIN_PASSWORD_LENGTH
++     )
++     assert expected_error in str(error)
+```
+</details>
+```
+
 ---
 
 ## Review Process
@@ -1108,6 +1200,7 @@ For each changed file, check:
 - CSRF/Auth正規化 (#17)
 - Serializerの機密フィールド設定 (#18)
 - DB変更後のオブジェクト同期 (#19)
+- Django request.user のID参照 (#19a) **※request.user.pk を使用しているか確認**
 - ビジネスロジック計算の正確性 (#20)
 
 **Pass 4 — Group D: パフォーマンス**
@@ -1121,6 +1214,7 @@ For each changed file, check:
 - 未使用import・関数定義順序 (#24)
 - APIヘルパーの重複 (#25)
 - バリデーションロジックの重複 (#26)
+- テストコードの品質 (#31) **※関数ベース + create_autospec + 定数検証**
 - エラーメッセージ定数の一貫性 (#27)
 - v-forキーの堅牢性 (#28)
 - デッドコード・未使用変数 (#29)
@@ -1198,6 +1292,7 @@ After reviewing all files, provide:
 - Miss missing validation for edge cases in business logic calculations
 - Allow password/token fields in Serializer without `write_only=True`
 - Miss stale in-memory objects after DB updates (missing `refresh_from_db()`)
+- **Allow `request.user.user_id` instead of Django標準の `request.user.pk`**
 
 **Group D (パフォーマンス):**
 - Miss N+1 query problems
@@ -1213,6 +1308,9 @@ After reviewing all files, provide:
 - Ignore comments that don't match the code they describe
 - Give vague feedback without specific line references
 - Skip providing code diffs for suggestions
+- **Allow class-based tests instead of function-based pytest style**
+- **Allow bare `Mock()` instead of `create_autospec()` for repository mocking**
+- **Allow hardcoded values in test assertions that should use domain constants**
 
 ## Integration with Development Workflow
 
