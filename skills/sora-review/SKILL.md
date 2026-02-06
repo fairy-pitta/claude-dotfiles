@@ -481,6 +481,20 @@ shared/types/に置いておけば再利用もできるので！
 feature固有のものでもerrors配下で管理した方が一貫性あります
 ```
 
+**Request/Result型はtypes/に配置:**
+
+```
+[must]
+このRequest型、usecaseファイル内に定義されてますけど、types/配下に移動したいです！
+他のfeatureではtypes/に置いてるので統一お願いします🙇
+```
+
+```
+ChangePasswordRequestとかの型定義はtypes/password.pyみたいに
+専用ファイルに切り出した方がいい気がします
+他のfeatureの例: organization/types/company.py, accounting/types/assignment.py
+```
+
 ### 14. Design Decision Questions (設計判断の確認)
 
 **設計の意図を確認する質問:**
@@ -525,7 +539,7 @@ feature固有のものでもerrors配下で管理した方が一貫性ありま�
 Read through the changes quickly and identify:
 - **Type safety issues** (Any usage - HIGHEST PRIORITY!, missing type hints)
 - **Dead code / dead variables** (unused types, imports, variables, functions)
-- **File placement** (code in wrong location, wrong layer)
+- **File placement** (code in wrong location, wrong layer, **Request/Result型がusecaseファイル内にある**)
 - **Type consistency** (same concept using different types across layers)
 - **Result type unpacking** (indexed access `result[0]` instead of tuple unpack)
 - **Feature dependency violations** (cross-feature imports, shared layer criteria)
@@ -713,6 +727,7 @@ Keep it simple and direct:
 - Missing type hints
 - Dead code / dead variables (デッドコードはセルフレビューで弾くべき！)
 - ファイル配置の誤り (shared配下に置くべきものがfeature内にある等)
+- **Request/Result型がusecaseファイル内に定義されている → types/に移動すべき**
 - Result型のインデックスアクセス (`result[0]`, `result[1]`) → タプルアンパック必須
 - Feature間の直接依存 (shared/経由のみ許可)
 - Repository層での `transaction.atomic()` → UseCase層のみ

@@ -404,6 +404,7 @@ Check that code is placed in the correct location:
 - Enums belong in `domain/enums/`
 - Error constants belong in `shared/constants/`
 - Types used by 3+ features must be in `shared/types/`
+- **Request/Result dataclasses belong in `types/` directory, not inline in usecase files**
 
 **Example comment:**
 ```
@@ -420,6 +421,35 @@ _⚠️ Potential issue_ | _🟠 Major_
 ```diff
 - // features/organization/utils/date_helper.py
 + // shared/utils/date_helper.py
+```
+</details>
+```
+
+**Example comment (Request型の配置):**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】Request型はtypes/配下に配置してください**
+
+`ChangePasswordRequest` がusecaseファイル内に定義されていますが、
+プロジェクトの慣例では `types/` ディレクトリに配置します。
+他のfeatureと統一するため、`types/password.py` 等に移動してください。
+
+参考: `organization/types/company.py`, `accounting/types/assignment.py`
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
+- # usecases/change_password_usecase.py 内に定義
+- @dataclass(frozen=True)
+- class ChangePasswordRequest:
+-     user_id: int
+-     current_password: str
+-     new_password: str
+
++ # types/password.py に移動
++ from app.features.user.types import ChangePasswordRequest
 ```
 </details>
 ```
@@ -1066,7 +1096,7 @@ For each changed file, check:
 - FE Presentation→Infrastructure直接依存 (#8)
 - Composable DIパターン準拠 (#9)
 - DTO配置の一貫性 (#10)
-- ファイル配置の適切性 (#11)
+- ファイル配置の適切性 (#11) **※Request/Result型がusecaseファイル内にないか確認**
 - Result型のタプルアンパック (#12)
 - トランザクション境界の配置 (#13)
 
@@ -1156,6 +1186,7 @@ After reviewing all files, provide:
 - Allow Composables to bypass DI container with direct API imports
 - Miss DTO/type definitions placed in wrong architectural layer
 - Ignore files placed in wrong location (should be in shared/)
+- **Allow Request/Result dataclasses defined inline in usecase files (should be in types/)**
 - Allow Result type indexed access (`result[0]`) instead of tuple unpacking
 - Miss `transaction.atomic()` in Repository layer (must be UseCase only)
 
