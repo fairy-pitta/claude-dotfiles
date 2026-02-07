@@ -836,7 +836,46 @@ O(N×M)になります。選択IDのSetをcomputedで持ち、O(1)判定にし�
 </details>
 ```
 
-#### 23. 冗長な return await
+#### 23. エンティティの過剰取得
+
+Check for:
+- Repository methods returning full entities when the caller only uses a few fields
+- UseCase/Service that iterates over entities but accesses only 2-3 fields (e.g. `entry_date`, `relative_month`)
+- Cases where `values_list()` or a lightweight DTO would suffice instead of full entity reconstruction
+
+**Example comment:**
+```
+_🛠️ Refactor suggestion_ | _🟡 Minor_
+
+**【要改善】Transactionエンティティ全体を取得していますが、使用フィールドは2つのみです**
+
+`get_transactions_by_journal_ids()` は全10フィールドのTransactionエンティティを返しますが、
+呼び出し元では `entry_date` と `relative_month` のみ使用しています。
+不要なフィールドの読み込み・マッパー変換がパフォーマンスの無駄になっています。
+
+必要なフィールドのみを持つ軽量DTOと専用リポジトリメソッドを検討してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++ @dataclass(frozen=True)
++ class TransactionDateInfo:
++     entry_date: datetime
++     relative_month: str
+
+  # Repository
+- def get_transactions_by_journal_ids(self, ids) -> Result[list[Transaction]]:
+-     queryset = TransactionModel.objects.filter(journal_id__in=ids)
+-     return [self._mapper.transaction_model_to_entity(item) for item in queryset]
++ def get_transaction_date_info_by_journal_ids(self, ids) -> Result[list[TransactionDateInfo]]:
++     rows = TransactionModel.objects.filter(journal_id__in=ids).values_list("entry_date", "relative_month")
++     return [TransactionDateInfo(entry_date=d, relative_month=m) for d, m in rows]
+```
+</details>
+```
+
+#### 23a. 冗長な return await
 
 When an async function's only purpose is to return another promise (no try-catch wrapping it),
 `return await` is redundant. The `await` adds an unnecessary microtask.
@@ -1207,7 +1246,8 @@ For each changed file, check:
 For each changed file, check:
 - N+1クエリ・バッチ処理不足 (#21)
 - テンプレート描画のO(N×M)探索 (#22)
-- 冗長なreturn await (#23)
+- エンティティの過剰取得（必要フィールドのみで十分か） (#23)
+- 冗長なreturn await (#23a)
 
 **Pass 5 — Group E: コード品質・DRY**
 For each changed file, check:
@@ -1298,6 +1338,7 @@ After reviewing all files, provide:
 - Miss N+1 query problems
 - Ignore O(N×M) linear searches in `v-for` template rendering
 - Overlook redundant `return await` in async delegation methods
+- Miss repository methods returning full entities when callers only use a subset of fields (over-fetching)
 
 **Group E (コード品質・DRY):**
 - Allow duplicated boilerplate across similar API helper functions

@@ -359,7 +359,27 @@ select_for_updateも入れた方がいい気がします
 https://qiita.com/sotaheavymetal21/items/fcba11952ac48505c44a
 ```
 
-### 8. Security & Error Handling
+### 8. Entity Over-Fetching (エンティティの過剰取得)
+
+**必要なフィールドだけ取得しているか:**
+
+```
+transactionsなんですけど無駄なフィールドも読み込んじゃってるのでリファクタしたいですね
+entry_dateとrelative_monthだけでいいはずです
+```
+
+```
+ここ、エンティティ丸ごと取ってきてますけど使ってるの2〜3フィールドだけですよね？
+軽量なDTOとvalues_list()で必要最小限だけ取得した方がいい気がします
+```
+
+```
+[q]
+このリポジトリメソッドの戻り値、全フィールド必要ですか？
+使ってないフィールドが多いなら専用の軽量メソッド切り出したいです！
+```
+
+### 9. Security & Error Handling
 
 **Direct concerns:**
 
@@ -548,7 +568,7 @@ Read through the changes quickly and identify:
 - **Single responsibility** (functions/classes doing too much)
 - **Code clarity** (unclear names, missing/unclear comments)
 - **Business logic accuracy** (calculations matching business requirements)
-- **Obvious performance problems** (N+1 queries)
+- **Obvious performance problems** (N+1 queries, entity over-fetching)
 - **Security concerns** (error exposure)
 - **Code organization issues** (constants, DRY violations)
 
@@ -732,6 +752,7 @@ Keep it simple and direct:
 - Feature間の直接依存 (shared/経由のみ許可)
 - Repository層での `transaction.atomic()` → UseCase層のみ
 - N+1 queries
+- Entity over-fetching (エンティティ全体を取得して数フィールドしか使っていない)
 - Missing transactions where needed
 - Error information exposure
 - Magic strings (not using constants)
