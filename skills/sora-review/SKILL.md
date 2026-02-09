@@ -11,7 +11,7 @@ Conduct code reviews mimicking lits0ra's casual, direct, and conversational appr
 
 **Announce at start:** "I'm using the sora-review skill to review your code!"
 
-**Data source:** 429 review comments from 50 PRs (322 PRs analyzed) + 直近10 PR (#357-#376) の変更パターン分析 + メール機能PRレビューコメント (lits0ra実コメント)
+**Data source:** 429 review comments from 50 PRs (322 PRs analyzed)
 
 ## Language Adaptation
 
@@ -160,42 +160,7 @@ SubCategoryNotFoundErrorとか作成してやった方がわかりやすいで�
 ditto
 ```
 
-### Pattern 8: Tagged Comments ([must] / [q])
-
-**Use tags to categorize comments:**
-
-```
-[must]
-ここに書くべきではないです！shared配下の適切な箇所においてください！
-```
-
-```
-[q]
-これはなんでEnum型にしたんでしょうか？
-```
-
-```
-[q]
-これどこで使われていますか？不要なら削除してください！
-```
-
-**Tag definitions:**
-- `[must]` - 必ず修正してほしい事項
-- `[q]` - 質問・確認事項（回答次第では修正不要の場合もある）
-
-### Pattern 9: Self-Review Expectations
-
-**セルフレビューで弾くべき事項を指摘:**
-
-```
-このようなデッドコードはできる限りセルフレビューで弾いてください！！
-```
-
-```
-未使用のimportはセルフレビューで気づけるはずなのでお願いします！
-```
-
-### Pattern 10: With Documentation References
+### Pattern 7: With Documentation References
 
 ```
 null=Trueって必要でしょうか？
@@ -211,6 +176,46 @@ https://qiita.com/sotaheavymetal21/items/fcba11952ac48505c44a
 bulk_createってやつがあるので作成の際はそれ使った方がいいかもです
 https://djangobrothers.com/blogs/django_bulk_create_update/
 ```
+
+## プロジェクトでよく出る問題（実PRレビューデータ由来）
+
+20件のPR（277件のCodeRabbit + 21件の人間レビューコメント）から抽出した頻出パターン。
+**レビュー時にこのリストを最初にチェックして、該当するものがあればフラッグする。**
+
+### 最優先チェック（毎回確認）
+
+| # | チェック | Soraっぽい指摘例 |
+|---|---------|-----------------|
+| P1 | **エラーメッセージが定数化されているか** | 「エラー文関連は定数にしたいかもです！同じメッセージが2箇所で使われてます」 |
+| P2 | **Feature間の直接依存がないか**（journal→accounting等の通常Feature間） | 「これ、journalからorganizationを直接importしちゃってる気がします！shared経由にした方がいいかもです」 |
+| P3 | **pytestが関数ベースになっているか**（classベース禁止） | 「テストはclassじゃなくて関数ベースでお願いします！プロジェクトの方針です」 |
+| P4 | **Result型がタプルアンパックされているか** | 「Result型は`result, error = `で受け取らないとダメです！.error属性アクセスは不可」 |
+
+### 高優先チェック
+
+| # | チェック | Soraっぽい指摘例 |
+|---|---------|-----------------|
+| P5 | **N+1クエリが発生していないか** | 「N+1問題が発生しているので激オモになる気がします。ループ内でクエリ走っちゃってます」 |
+| P6 | **トランザクションが必要な箇所に貼られているか** | 「【重要】クエリが2個走ってて、片方が成功して片方が失敗すると不整合になるのでトランザクション貼りたいです」 |
+| P7 | **permission_classesが明示的に設定されているか** | 「ViewのPermission、デフォルトに依存してる気がします！明示的に設定した方が安全です」 |
+| P8 | **ステータス/カテゴリ値がEnum化されているか** | 「nits\nstatusはenumから参照したいです🙇」 |
+
+### 中優先チェック
+
+| # | チェック | Soraっぽい指摘例 |
+|---|---------|-----------------|
+| P9 | **正常系テストがあるか**（異常系だけじゃないか） | 「異常系のテストしかしてないように見えます！正常なパターンはテストしなくて良いのでしょうか？？」 |
+| P10 | **Serializer/Domainモデルのフィールド名が一致しているか** | 「Serializerのフィールド名、ドメインモデルにないやつ入ってません？ AttributeError出ちゃいそうです」 |
+| P11 | **コードの意図が明確か** | 「意図がわかりにくいです！Optionalにして明示的にチェックした方がわかりやすい気がします」 |
+| P12 | **非推奨APIを使っていないか** | 「CheckConstraintはdeprecatedなので違うものを使用したいです！」 |
+| P13 | **テストデータが独立しているか**（可変な共有辞書等） | 「テスト間で同じ辞書使い回してません？テスト汚染になりそうです」 |
+| P14 | **write_only設定**（パスワード等の機密フィールド） | 「パスワードフィールドにwrite_only=True入れた方がよくないですか？レスポンスに漏れちゃいます」 |
+| P15 | **エッジケースが考慮されているか** | 「ほとんどあり得ない話ですが、トークン発行と同時刻に検証すると期限切れになるので、<=ではなく<の方がいい気がします！」 |
+| P16 | **リバースマイグレーションが実装されているか** | 「reverse_codeがnoopだとロールバックできなくないですか？」 |
+| P17 | **logger/printを使っていないか** | 「loggerの使用禁止です！例外で伝播させてください」 |
+| P18 | **重複コード・DRY違反がないか** | 「同じヘルパーが2箇所にありません？共通化した方がよさそうです」 |
+| P19 | **Presentation層がInfrastructure層に直接依存していないか** | 「ComposableからAPI関数を直接呼んでる気がします。UseCase経由にした方がいいかもです」 |
+| P20 | **データアクセスが正当か** | 「これって、assignment_idにちゃんとアクセスできますか？」 |
 
 ## Review Focus Areas
 
@@ -267,81 +272,7 @@ assignment.assignments
 実際、「有効な会社IDが必要です。」が使用されている箇所は二つあります
 ```
 
-### 3. Type Consistency Across Layers (型の一貫性)
-
-**同じ概念がレイヤーをまたぐ際に型がバラバラになっていないか:**
-
-```
-yearがstr型とint型で混在してます！統一したいです🙇
-```
-
-```
-同じフィールドなのにView層ではstr、UseCase層ではintになってるの気になります
-Serializer/Viewで型変換してからUseCaseに渡すようにしたいです！
-```
-
-```
-レイヤー間で型が違うとバグの温床になる気がします
-company_idは常にint型でお願いします！
-```
-
-### 4. Result Type Unpacking (Result型のアンパック)
-
-**Result型は必ずタプルアンパックで受け取る:**
-
-```
-result[0]、result[1]のインデックスアクセスはやめたいです！
-value, error = ... のタプルアンパックでお願いします🙇
-```
-
-```
-ここもタプルアンパックに変えたいです
-可読性が段違いです！
-```
-
-```
-これも
-result[1] is not None のパターンやめたいです
-error is not None の方がわかりやすいです
-```
-
-### 5. Feature Dependency Rules (Feature依存関係)
-
-**Feature間の依存関係ルール違反がないか:**
-
-```
-これって他のfeatureから直接importしてませんか？
-shared/に移動した方がいい気がします
-```
-
-```
-3つ以上のfeatureから依存されてるサービスはshared/に移動したいです！
-```
-
-```
-Feature間の依存は禁止なので、shared/types/経由でデータ構造を共有するようにしたいです
-```
-
-### 6. Transaction Boundary Placement (トランザクション境界)
-
-**トランザクションはUseCase層でのみ管理:**
-
-```
-Repository層にtransaction.atomic()があるの気になります
-UseCase層で管理した方がいい気がします！
-```
-
-```
-select_for_updateがあるのにトランザクションがないと
-TransactionManagementErrorになりますよ！UseCase側で貼ってください🙇
-```
-
-```
-トランザクション境界はUseCase層のみでお願いします
-Repository層では貼らないルールです！
-```
-
-### 7. Database & Performance
+### 3. Database & Performance
 
 **Focus on practical issues:**
 
@@ -359,27 +290,7 @@ select_for_updateも入れた方がいい気がします
 https://qiita.com/sotaheavymetal21/items/fcba11952ac48505c44a
 ```
 
-### 8. Entity Over-Fetching (エンティティの過剰取得)
-
-**必要なフィールドだけ取得しているか:**
-
-```
-transactionsなんですけど無駄なフィールドも読み込んじゃってるのでリファクタしたいですね
-entry_dateとrelative_monthだけでいいはずです
-```
-
-```
-ここ、エンティティ丸ごと取ってきてますけど使ってるの2〜3フィールドだけですよね？
-軽量なDTOとvalues_list()で必要最小限だけ取得した方がいい気がします
-```
-
-```
-[q]
-このリポジトリメソッドの戻り値、全フィールド必要ですか？
-使ってないフィールドが多いなら専用の軽量メソッド切り出したいです！
-```
-
-### 9. Security & Error Handling
+### 4. Security & Error Handling
 
 **Direct concerns:**
 
@@ -396,7 +307,7 @@ usecaseではエラー内容を握りつぶさずにViewでエラー内容を握
 これってみえちゃいけないエラー文とかはみえない感じになってます？
 ```
 
-### 9. Code Comments & Documentation
+### 5. Code Comments & Documentation
 
 **Check for clarity and consistency:**
 
@@ -422,119 +333,34 @@ usecaseではエラー内容を握りつぶさずにViewでエラー内容を握
 （別にここにはなくても特に問題はないんですが見栄え的に気になりました）
 ```
 
-### 10. Django Integration Any Type Avoidance (Django統合時のAny回避)
+### 6. Unused Code Detection
 
-**Django Model/Manager統合時にAnyを使わないパターン:**
-
-```
-Model.save()の**kwargs: Anyは避けたいです！
-SaveKwargsみたいなTypedDict作ってUnpackで受けたいです
-```
+**Check for dead code:**
 
 ```
-create_user/create_superuserの**extra_fields: Anyも
-UserExtraFieldsみたいなTypedDict+Unpackで型安全にしたいです！
+この関数使われていない気がするので消してください！
 ```
 
 ```
-Django側がAny前提でも、アプリ側でTypedDict定義して型を明示した方がいい気がします
-shared/types/に置いておけば再利用もできるので！
-```
-
-### 11. Business Logic Calculation Verification (ビジネスロジック計算の検証)
-
-**計算ロジックが業務仕様と一致しているか:**
-
-```
-この計算って期首日(starting_date)を考慮してますか？
-期首日が1日以外の場合に月がズレる気がします
+この関数使われていない関数内でしか使われていない気がするので消してください！
 ```
 
 ```
-会計月と相対月の計算、closing_monthの影響が反映されてない気がします
-テストケースで確認したいです！
+このimport使われてないです
 ```
 
 ```
-ここの計算ロジック、仕様と合ってるかちょっと確認したいです
-エッジケース（決算月、期首日が月末の場合など）のテストもあると安心です！
+関連する型定義とかも使われてないので一緒に消しちゃいましょう！
 ```
 
-### 12. Dead Code & Dead Variables (デッドコード・デッド変数)
+**What to check:**
+- 定義されているが呼び出されていない関数・メソッド
+- 未使用のinterface/type/定数定義
+- 未使用のimport
+- 未使用の関数内でしか使われていないヘルパー関数（連鎖的に不要になるもの）
+- 削除した関数に紐づく型定義・エラーメッセージ・API定数なども連鎖チェック
 
-**使われていないコード・変数・型定義がないか:**
-
-```
-[must]
-これどこで使われていますか？不要なら削除してください！このようなデッドコードはできる限りセルフレビューで弾いてください！！
-```
-
-```
-この変数、定義されてるだけで使われてない気がします
-削除お願いします！
-```
-
-```
-このimport使われてないです！不要なら消したいです
-```
-
-```
-この型定義（TypeAlias）、実際に参照されてますか？
-使われてないなら消しちゃいましょう！
-```
-
-### 13. File Placement (ファイル配置の適切性)
-
-**コードが正しい場所に置かれているか:**
-
-```
-[must]
-ここに書くべきではないです！shared配下の適切な箇所においてください！
-```
-
-```
-このEnumはdomain/enums/配下に置いた方がいい気がします
-```
-
-```
-エラー定数はshared/constants/errors/に置いてください！
-feature固有のものでもerrors配下で管理した方が一貫性あります
-```
-
-**Request/Result型はtypes/に配置:**
-
-```
-[must]
-このRequest型、usecaseファイル内に定義されてますけど、types/配下に移動したいです！
-他のfeatureではtypes/に置いてるので統一お願いします🙇
-```
-
-```
-ChangePasswordRequestとかの型定義はtypes/password.pyみたいに
-専用ファイルに切り出した方がいい気がします
-他のfeatureの例: organization/types/company.py, accounting/types/assignment.py
-```
-
-### 14. Design Decision Questions (設計判断の確認)
-
-**設計の意図を確認する質問:**
-
-```
-[q]
-これはなんでEnum型にしたんでしょうか？
-```
-
-```
-[q]
-ここをTypedDictにした理由ってありますか？dataclassの方が合ってる気がします
-```
-
-```
-[q]
-この構造にした意図を教えてもらえると！
-```
-
-### 15. Business Logic
+### 7. Business Logic
 
 **Clarifying questions:**
 
@@ -558,38 +384,26 @@ ChangePasswordRequestとかの型定義はtypes/password.pyみたいに
 
 Read through the changes quickly and identify:
 - **Type safety issues** (Any usage - HIGHEST PRIORITY!, missing type hints)
-- **Dead code / dead variables** (unused types, imports, variables, functions)
-- **File placement** (code in wrong location, wrong layer, **Request/Result型がusecaseファイル内にある**)
-- **Type consistency** (same concept using different types across layers)
-- **Result type unpacking** (indexed access `result[0]` instead of tuple unpack)
-- **Feature dependency violations** (cross-feature imports, shared layer criteria)
-- **Transaction boundary** (transaction.atomic in wrong layer)
 - **Variable reassignment** (unnecessary re-assignment)
 - **Single responsibility** (functions/classes doing too much)
 - **Code clarity** (unclear names, missing/unclear comments)
-- **Business logic accuracy** (calculations matching business requirements)
-- **Obvious performance problems** (N+1 queries, entity over-fetching)
+- **Obvious performance problems** (N+1 queries)
 - **Security concerns** (error exposure)
 - **Code organization issues** (constants, DRY violations)
+- **Unused code** (unused functions, methods, types, imports, constants)
 
 ### 2. Comment on Key Issues
 
 Focus on what matters most (priority order):
 1. **Type safety** (Any型は絶対NG! - 29 mentions)
-2. **Dead code / dead variables** (デッドコード・未使用変数・未使用型定義 → セルフレビューで弾くべき)
-3. **File placement** (ファイル配置の適切性 → shared/domain/等の正しい場所に)
-4. **Type consistency** (レイヤー間の型不一致)
-5. **Result type unpacking** (インデックスアクセス禁止 → タプルアンパック必須)
-6. **Feature dependency** (Feature間依存禁止、shared移動基準)
-7. **Transaction boundary** (UseCase層のみ、Repository層禁止)
-8. **Variable reassignment** (unnecessary re-assignment)
-9. **Single responsibility** (functions/classes too large)
-10. **Code comments** (clarity, accuracy, necessity)
-11. **Business logic** (計算ロジックの正確性、エッジケース)
-12. **Performance issues** (N+1, transaction problems)
-13. **Security concerns** (error exposure)
-14. **Constants** (magic strings - 9 mentions)
-15. **Code organization** (DRY violations)
+2. **Variable reassignment** (unnecessary re-assignment)
+3. **Single responsibility** (functions/classes too large)
+4. **Code comments** (clarity, accuracy, necessity)
+5. **Unused code** (未使用の関数・メソッド・型・import・定数)
+6. **Performance issues** (N+1, transaction problems)
+7. **Security concerns** (error exposure)
+8. **Constants** (magic strings - 9 mentions)
+9. **Code organization** (DRY violations)
 
 ### 3. Ask Questions
 
@@ -607,22 +421,12 @@ When unsure, ask directly:
 
 ## Comment Categories
 
-### Must Fix (【重要】 or [must])
+### Must Fix (【重要】)
 
 ```
 【重要】
 クエリが２個走ってて、片方が成功して片方が失敗すると不整合になってしまうので
 トランザクションを貼りたいです
-```
-
-```
-[must]
-ここに書くべきではないです！shared配下の適切な箇所においてください！
-```
-
-```
-[must]
-デッドコードです！使われてないので削除してください！
 ```
 
 ### Should Fix
@@ -642,17 +446,7 @@ nits
 statusはenumから参照したいです🙇
 ```
 
-### Questions ([q])
-
-```
-[q]
-これはなんでEnum型にしたんでしょうか？
-```
-
-```
-[q]
-これどこで使われていますか？不要なら削除してください！
-```
+### Questions
 
 ```
 GETじゃなくてPOSTでしょうか？
@@ -743,27 +537,19 @@ Keep it simple and direct:
 ## Red Flags - Sora's Pet Peeves
 
 **Absolute no-go:**
-- `Any` type usage (Django統合時も含む → TypedDict+Unpackで回避)
+- `Any` type usage
 - Missing type hints
-- Dead code / dead variables (デッドコードはセルフレビューで弾くべき！)
-- ファイル配置の誤り (shared配下に置くべきものがfeature内にある等)
-- **Request/Result型がusecaseファイル内に定義されている → types/に移動すべき**
-- Result型のインデックスアクセス (`result[0]`, `result[1]`) → タプルアンパック必須
-- Feature間の直接依存 (shared/経由のみ許可)
-- Repository層での `transaction.atomic()` → UseCase層のみ
 - N+1 queries
-- Entity over-fetching (エンティティ全体を取得して数フィールドしか使っていない)
 - Missing transactions where needed
 - Error information exposure
 - Magic strings (not using constants)
 
 **Mildly annoying:**
 - Unused imports
+- Unused functions/methods/types/constants (dead code)
 - Missing null checks
 - Unclear variable names
 - Long argument lists
-- レイヤー間で同じ概念の型が不一致 (例: yearがstrとintで混在)
-- ビジネスロジックのエッジケーステスト不足
 
 ## Example Review (Japanese)
 
