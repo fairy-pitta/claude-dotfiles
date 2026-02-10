@@ -260,6 +260,7 @@ Check for:
 - **Edge case consideration** `[1 PR]` - 同時リクエスト・タイミング問題・境界値（`<=` vs `<`）などのエッジケースが考慮されているか
 - **Validation execution order** - 削除・更新処理の前にバリデーションが実行されているか。先に副作用を起こしてからチェックしていないか
 - **Data access correctness** `[1 PR]` - リレーション先のフィールドに正しくアクセスできるか。NULLの可能性があるフィールドへの安全なアクセスがされているか
+- **Post-normalization validation** `[1 PR]` - 入力値を正規化・変換した後に、結果が有効か再検証しているか。例: `normalize_month_params()`後に空配列になるケースをエラーとして弾いているか
 
 **Example comment:**
 ```
@@ -363,6 +364,8 @@ Check for:
 - **DRY principle violations** `[2 PR]` - 同一・類似のヘルパーメソッドやバリデーションロジックが複数箇所に存在していないか
 - **Code intent clarity** `[2 PR]` - 変数名・メソッド名・コメントからコードの意図が読み取れるか
 - **Deprecated API usage** `[1 PR]` - 非推奨（deprecated）のDjango API（例: `CheckConstraint`のclass引数）を使用していないか。新しい推奨APIに置き換えられているか
+- **Comment accuracy** `[1 PR]` - コメントが実際のコードの挙動と一致しているか。例: 「13を含む」と書かれているが実際は「decision1」を含む等、誤解を招くコメントがないか
+- **Type annotation style consistency** `[1 PR]` - 同一ファイル内で`Union[A, B]`と`A | B`が混在していないか。PEP 604対応済みプロジェクトでは`|`構文に統一する
 - **Import organization** - 未使用import、import順序
 - **Function definition order** - 適切な定義順序
 
@@ -400,7 +403,52 @@ _⚠️ Potential issue_ | _🟠 Major_
 データの復元ロジックを実装するか、明示的に`migrations.RunPython.noop`の理由をコメントしてください。
 ```
 
-### 11. Syntax & Basic Quality
+### 11. Frontend Quality (Vue.js / TypeScript)
+
+Check for:
+- **v-for :key stability** `[1 PR]` - `v-for`の`:key`にarray indexを使用していないか。行の追加・削除時にDOM再利用の不整合が発生する。`posting_id`等の安定した識別子をキーに使うこと
+- **Async race conditions** `[1 PR]` - Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスが最新の状態を上書きしないか。requestIdガードパターンで最新リクエストのみ反映するようにする
+- **Floating Promises** `[1 PR]` - `async`関数を`await`も`void`もなしに呼び出していないか。意図的なfire-and-forgetなら`void`を明示する（`void fetchData()`）
+- **Business logic guard consistency** `[1 PR]` - UIレベルのガード（例: `isClickable` computed）だけでなく、イベントハンドラ等のビジネスロジック層でも同じ制約を担保しているか。UIガードだけではエッジケースで迂回される可能性がある
+- **Implicit truthiness vs explicit checks** - `if (value)` による暗黙のtruthyチェックで `null`・`undefined`・空文字が意図通りに処理されるか。型に応じて `value != null && value !== ''` 等の明示的チェックを推奨
+
+**Example comment:**
+```
+_⚠️ Potential issue_ | _🟠 Major_
+
+**【必須修正】連続フェッチ時に古いレスポンスで状態が上書きされる競合状態**
+
+複数の`fetchDetails`呼び出しが重なった場合、先の呼び出しの古いレスポンスが
+後から返ると表示データがズレます。requestIdガードで最新のみ反映してください。
+
+<details>
+<summary>🔧 修正案</summary>
+
+```diff
++ const latestRequestId = ref(0)
+
+  async function fetchDetails(params) {
++   const requestId = ++latestRequestId.value
+    isLoading.value = true
+    try {
+      const response = await repository.getData(params)
++     if (requestId !== latestRequestId.value) return
+      data.value = response.data
+    } catch (e) {
++     if (requestId !== latestRequestId.value) return
+      error.value = e
+    } finally {
+-     isLoading.value = false
++     if (requestId === latestRequestId.value) {
++       isLoading.value = false
++     }
+    }
+  }
+```
+</details>
+```
+
+### 12. Syntax & Basic Quality
 
 Check for:
 - **Syntax errors** `[3 PR]` - importの括弧閉じ忘れ、重複パラメータ定義、未解決のマージコンフリクトマーカー（`<<<<<<<`）がないか
@@ -417,18 +465,19 @@ git diff --name-only origin/dev...HEAD
 
 ### 2. Analyze Each File
 
-For each changed file, check all 11 review focus areas:
+For each changed file, check all 12 review focus areas:
 1. Architecture Compliance (Feature dependencies, Domain purity, layer violations)
 2. Type Safety & Layer Consistency (Any, Result type, Serializer/Domain mismatch)
 3. Security & Authorization (permission_classes, write_only, auth bypass)
 4. Error Messages & Constants (string literals, logger/print)
 5. Database Performance (N+1, bulk operations)
-6. Validation & Error Handling (completeness, edge cases, order)
+6. Validation & Error Handling (completeness, edge cases, order, post-normalization)
 7. Test Quality (pytest style, normal case coverage, test data independence)
 8. Unused Code Detection (functions, types, imports, constants)
-9. Code Organization & DRY (duplication, deprecated APIs, intent clarity)
+9. Code Organization & DRY (duplication, deprecated APIs, intent clarity, comment accuracy)
 10. Migration & DB Schema (reverse migration, rollback risks)
-11. Syntax & Basic Quality (syntax errors, merge conflicts, naming)
+11. Frontend Quality (v-for key, async race conditions, floating promises, guard consistency)
+12. Syntax & Basic Quality (syntax errors, merge conflicts, naming)
 
 ### 3. Generate Summary
 
