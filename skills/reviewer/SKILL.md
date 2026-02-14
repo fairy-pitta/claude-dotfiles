@@ -9,15 +9,16 @@ Run a `coderabbit-review` style code review, then **post each finding directly o
 
 **Core principle:** Leverage the coderabbit-review skill for thorough analysis, then deliver results as inline PR comments — not as one big summary comment.
 
-**Announce at start:** "I'm using the reviewer skill to review and post inline comments on the PR."
+**Announce at start:** "reviewer スキルでレビューしてインラインコメントを投稿します"
 
 ## Workflow Overview
 
 ```
 Step 1: Identify PR and get metadata (PR number, commit SHA, owner/repo)
 Step 2: Perform code review using coderabbit-review methodology
-Step 3: Get numbered diff and calculate positions for each finding
-Step 4: Post each finding as an inline comment via gh api
+Step 3: Present findings list to user for approval (MUST WAIT)
+Step 4: After user approval, get numbered diff and calculate positions
+Step 5: Post each finding as an inline comment via gh api
 ```
 
 ## Step 1: Identify PR and Get Metadata
@@ -52,15 +53,41 @@ If no PR exists, inform the user and stop.
    - **Group C:** Error Handling & Security (validation, API error normalization, etc.)
    - **Group D:** Performance (N+1 queries, O(N*M) in templates, redundant awaits)
    - **Group E:** Code Quality & DRY (unused code, dead code, v-for keys, comment accuracy, etc.)
-4. Use the coderabbit-review **comment format** (category + severity + title + explanation + diff suggestion)
-5. Check against CLAUDE.md project rules
+4. Check against CLAUDE.md project rules
+5. Filter out obvious/trivial findings (e.g., things that are intentional or self-evident)
 
 For each finding, record:
-- The comment body (in coderabbit-review format)
 - The target file path
 - The target line number in the file
+- Brief description of the issue
 
-## Step 3: Calculate Diff Positions
+## Step 3: Present Findings for User Approval
+
+**CRITICAL: Do NOT post comments until user approves.**
+
+Present findings as a table in Japanese:
+
+```markdown
+## 指摘予定リスト
+
+| # | 重要度 | ファイル | 行 | 内容 |
+|---|--------|----------|-----|------|
+| 1 | Medium | `path/to/file.ts` | 42 | 簡潔な説明 |
+| 2 | Low | `path/to/other.vue` | 100 | 簡潔な説明 |
+...
+
+どれを投稿するか、修正・削除したい項目はありますか？
+```
+
+Wait for user to:
+- Approve all
+- Remove specific items
+- Modify specific items
+- Discuss specific items
+
+Only proceed to Step 4 after explicit approval.
+
+## Step 4: Calculate Diff Positions
 
 The GitHub API requires a `position` parameter (not a file line number) to place inline comments. The position is calculated from the diff output.
 
@@ -96,7 +123,7 @@ position = target_diff_line_number - first_@@_line_number_for_that_file
 - Position counting continues across multiple `@@` hunks within the same file (positions do NOT reset at each hunk)
 - The first `@@` line of the file is the reference point (position 0); all subsequent lines count from there
 
-## Step 4: Post Inline Comments
+## Step 5: Post Inline Comments
 
 Use `gh api` to post each comment individually on the exact code line:
 
@@ -113,10 +140,10 @@ JSONEOF
 ```
 
 **Parameters:**
-- `body`: The review comment in coderabbit-review format (category + severity + explanation + diff)
+- `body`: The review comment (see Comment Format below)
 - `commit_id`: The HEAD commit SHA of the PR
 - `path`: Relative file path from repo root (e.g., `frontend/src/components/Foo.vue`)
-- `position`: The calculated position in the diff (see Step 3)
+- `position`: The calculated position in the diff (see Step 4)
 
 **For files NOT in the diff** (e.g., pointing out that a constant in another file became unused):
 Post as a general PR comment instead:
@@ -124,6 +151,49 @@ Post as a general PR comment instead:
 ```bash
 gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments \
   --method POST -f body="<comment body>"
+```
+
+## Comment Format
+
+**Keep comments concise and direct. No fluff.**
+
+Format:
+```
+[カテゴリ - 重要度] タイトル
+
+簡潔な説明（1-2文）
+
+```diff
+- old code
++ new code
+```
+```
+
+**Style rules:**
+- NO `##` headers — just `[カテゴリ - 重要度]`
+- NO trailing particles like 「ね」「かな」「かも」
+- NO follow-up excuses like 「このままでもOK」「今の規模なら問題ない」
+- NO unnecessary context like 「CLAUDE.md的には」
+- Let the diff speak for itself — minimal explanation needed
+- Write in Japanese
+
+**Good example:**
+```
+[エラーハンドリング - Medium] エラーメッセージがハードコード
+
+`'登録に失敗しました'` が定数化されてない
+
+```diff
+-  submitError.value = e instanceof Error ? e.message : '登録に失敗しました'
++  submitError.value = e instanceof Error ? e.message : VALIDATION_MESSAGES.REGISTRATION_FAILED
+```
+```
+
+**Bad example:**
+```
+## [エラーハンドリング - Medium] エラーメッセージがハードコードされてるね
+
+ここの `'登録に失敗しました'` がベタ書きになってるね。CLAUDE.md的には `messageConstants.ts` に定数化した方がいいかも。今の規模なら問題ないけど、将来的には統一しておくと安心かな。
 ```
 
 ## Practical Tips
@@ -170,12 +240,12 @@ If `gh api` returns a 422 error with `"subject_type" is not a permitted key`:
 
 ## Red Flags - Never Do This
 
+- **Never post comments without user approval** — always present the list first and wait
 - **Never post all comments as a single summary** — each finding must be an individual inline comment on the specific code line
 - **Never guess positions** — always calculate from the actual diff output
 - **Never skip the diff position calculation** — using file line numbers directly will fail
 - **Never use the `line` or `subject_type` API parameters** — use `position` only
-- **Never post comments without severity and category indicators** (coderabbit-review format required)
-- **Never post comments without actionable code diff suggestions**
+- **Never add fluff or excuses to comments** — keep them direct and concise
 - **Never post on lines outside the diff** — use general PR comments for those
 - **Never skip the coderabbit-review 5-pass review** — this skill's value is combining thorough review with precise PR delivery
 
