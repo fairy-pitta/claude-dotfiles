@@ -40,28 +40,88 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 以下を検出する:
 
-**FSD レイヤー依存違反 (1.5)**
-- `features/` 内のファイルが `@features/` を import していないか（features 間依存禁止）
+**FSD レイヤー依存違反 (1.5) [MUST]**
+- `features/` 内のファイルが `@features/` を import していないか（features 間依存禁止、type-only 含む）
 - `entities/` 内のファイルが `@features/` や `@pages/` を import していないか
 - `shared/` 内のファイルが `@entities/`, `@features/`, `@pages/` を import していないか
 - レガシーディレクトリ（`@/presentation/`, `@/application/`, `@/domain/`, `@/infrastructure/`）からの import がないか
 
-**Cross-Slice 違反 (1.6)**
-- `entities/` 間の cross-slice import が `import type` 以外で行われていないか
-- `features/` 間の直接 import がないか（type-only 含め禁止）
+依存方向の許可表:
 
-**Public API パターン (1.4)**
+| from | 許可先 | 備考 |
+|------|--------|------|
+| `app` | `pages`, `features`, `entities`, `shared` | エントリポイント |
+| `pages` | `features`, `entities`, `shared` | オーケストレーション層 |
+| `features` | `entities`, `shared` | **features 間の依存は禁止** |
+| `entities` | `shared` | `@x` type-only 例外あり |
+| `shared` | `shared` | 自己参照のみ |
+
+**UI 配置の判定フロー (1.2) [MUST]**
+コンポーネントが正しい層に配置されているか、以下の短絡判定フローで確認:
+1. 業務操作（承認・保存・アップロード等）を起こすか？ → Yes: `features/*/ui/`
+2. 単一エンティティの表現（アバター・バッジ等）か？ → Yes: `entities/*/ui/`
+3. 特定画面専用のレイアウト・構成か？ → Yes: `pages/*/`
+4. 上記いずれでもない → `shared/ui/`
+
+**shared 層の性質定義 (1.3) [MUST]**
+- shared に配置されたコードがビジネスロジックを含んでいないか（会社・仕訳・ユーザーなどの概念を知らない）
+- shared が他の FSD レイヤー（entities, features 等）に依存していないか
+- **例外**: `shared/ui/` のデザインシステム基盤部品（`Button`, `Input`, `Modal` 等）は利用箇所数に関わらず shared に配置可
+
+**Public API パターン (1.4) [MUST]**
 - 外部スライスからの import が `index.ts` 経由でなく内部構造を直接参照していないか
   - 例: `@entities/user/api/userQueries` のように内部パスを直接 import している
+- `index.ts` で `export *` による全公開をしていないか（公開 API のみ明示的に export すること）
+- **例外**: 同一スライス内のテスト（`*.spec.ts`）・Storybook（`*.stories.ts`）は `index.ts` を経由せず相対パスで直接 import してよい
 
-**import 順序 (14.2)**
-- 外部ライブラリ → @shared → @entities → @features → @pages → @app → 相対パスの順になっているか
+**Cross-Slice 違反 (1.6) [MUST]**
+- `entities/` 間の cross-slice import が `@x` パターンのルールに従っているか:
+  - `import type` 限定（実行時値のエクスポート禁止）
+  - consumer 指名ファイル（`@x/<consumer名>.ts`）で管理
+  - `index.ts` の公開 API とは別に管理
+- `features/` 間の直接 import がないか（type-only 含め禁止）
+  - 正しい解決策: ドメイン概念は `entities` に昇格させる
 
-**パスエイリアス (14.3)**
+**features 間共有の昇格ルール (1.6.3) [MUST]**
+- 3つ以上の consumer slice で必要になった関数・型が feature 内に残っていないか
+- 1-2 consumer での共有:
+  - 非業務ユーティリティ → 各 feature に重複実装してよい [SHOULD]
+  - 業務ロジック（税計算、金額導出等）→ 重複は避ける。即座に entities に昇格を検討 [SHOULD NOT]
+- カウント単位: 1 consumer = 1 slice、同一 slice 内の複数ファイルは1、`*.spec.ts`/`*.stories.ts` は対象外
+
+**features 間依存の解決フロー (1.6.4) [MUST]**
+features 間依存が発生した場合、以下で解決されているか:
+1. 型の共有 → 業務概念: `entities/*/model/`、非業務: `shared/types/`
+2. API キャッシュの共有 → `entities/*/api/` の QueryKey を共有し、pages で orchestrate
+3. 関数・composable の共有 → 単一エンティティ帰属: `entities/*/lib/`、複数エンティティ調停: owner feature を新設、非業務: `shared/composables/` or `shared/lib/`
+4. UI コンポーネントの共有 → エンティティ表現: `entities/*/ui/`、汎用: `shared/ui/`
+
+**entities 昇格の境界（肥大化防止）(1.6.5) [MUST/MUST NOT]**
+- entities に置けるのは**単一エンティティ中心**のロジックのみ（不変条件、導出値計算、正規化・変換）
+- entities に置いてはいけないもの:
+  - 画面遷移・route/query・UI 状態 → `features/*/` or `pages/*/`
+  - 複数 feature をまたぐ業務フロー → `pages/*/`
+  - 複数エンティティの調停ロジック → UI なしの policy feature を新設
+
+**pages 層のオーケストレーション (1.7) [MUST]**
+- 複数 features を跨ぐ連携が pages 層で行われているか
+- features 同士が直接 import せず、pages が emits を受け取り route/query 経由で別 feature に伝播しているか
+- 連携手段の優先度 [SHOULD]:
+  1. Route params/query（URL に残すべき状態）
+  2. TanStack Query cache（entities の QueryKey 経由）
+  3. Props/emits（親子間の即時 UI 連携）
+  4. provide/inject（深いツリーの局所文脈、最終手段）
+
+**サブスライス内部設計 (1.8) [MUST]**
+- 同一 feature 内のサブスライス間が `model/` または `lib/` を介して連携しているか
+- サブスライス間の直接相互参照がないか
+- 循環依存がないか（`import/no-cycle` で CI 検知）
+
+**import 順序 (14.2) [MUST]**
+- 外部ライブラリ → `@shared/` → `@entities/` → `@features/` → `@pages/` → `@app/` → 相対パスの順になっているか
+
+**パスエイリアス (14.3) [MUST]**
 - 2階層以上の相対パス（`../../`）を使用していないか（FSD レイヤーは alias 必須）
-
-**barrel export (14.1)**
-- `index.ts` で `export *` による全公開をしていないか
 
 ---
 
@@ -69,17 +129,75 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 以下を検出する:
 
-**状態管理 (2.1-2.5)**
-- Pinia の `defineStore` が使用されていないか（SHOULD NOT）
-- composable singleton で `readonly()` なしで ref を外部に公開していないか（MUST）
-- `route.params.companyId` 以外で activeCompanyId を管理していないか
+**状態の 3 分類 (2.1) [MUST]**
+- 状態が適切なカテゴリで管理されているか:
+  - サーバー状態 → TanStack Query v5
+  - クライアント状態（グローバル）→ composable singleton
+  - ローカル UI 状態 → コンポーネント内 ref
 
-**TanStack Query (3.1-3.5)**
+**Pinia 不採用 (2.2) [SHOULD]**
+- Pinia の `defineStore` が使用されていないか
+- **例外**: 以下の3条件を**全て**満たす場合のみ導入を検討してよい:
+  - 離れた複数ツリーから読み書きされる（3 箇所以上）
+  - 状態遷移が複雑（アクション、ロールバック、派生状態が多い）
+  - DevTools / プラグイン（永続化等）活用が必要
+
+**Composable Singleton パターン (2.3) [MUST]**
+- グローバルなクライアント状態が module-level ref + composable で管理されているか
+- 外部に公開する ref が `readonly()` で保護されているか
+- singleton の取得は setup 外でも可。副作用の開始は setup 内でのみ行うルールに従っているか
+
+**Props バケツリレー防止 (2.4) [SHOULD]**
+- 3階層以上の props 受け渡しがないか
+- 解決手段の判定:
+  1. 同一サブツリー内の共有 → provide/inject
+  2. アプリ全体で横断的 → composable singleton
+  3. それ以外 → props/emits で十分
+
+**activeCompanyId (2.5) [MUST]**
+- `route.params.companyId` を Single Source of Truth としているか
+- localStorage は補助（初期リダイレクト用のみ）
+
+**QueryKey Factory パターン (3.1) [MUST]**
 - QueryKey が文字列リテラル直書きになっていないか（Factory パターン必須）
-- `queryFn` で `signal` を受け取っていないか（キャンセル対応必須）
-- マスターデータの QueryKey に `['master', ...]` prefix がないケース
-- QueryKey に `undefined` が含まれる可能性がないか（デフォルト値必須）
-- `invalidateQueries` の使い方が適切か
+- QueryKey の形式: `['entity', 'action', params?]`
+
+**キャッシュ戦略 (3.2) [MUST]**
+- データの性質に応じた `staleTime` / `gcTime` が設定されているか:
+
+| データ種別 | staleTime | gcTime |
+|-----------|-----------|--------|
+| デフォルト | 1 min | 5 min |
+| マスターデータ（勘定科目・地域） | 24 h | 7 d |
+| トランザクション（仕訳一覧） | 30 s - 2 min | 10 - 30 min |
+| セッション情報 | 5 min | 30 min |
+| リアルタイム | 0 - 5 s | 1 - 5 min |
+
+- retry 戦略: 4xx はリトライしない（408/429 を除く）、5xx / ネットワークエラーは1回リトライ
+
+**マスターデータの QueryKey prefix (3.2.1) [MUST]**
+- マスターデータ（勘定科目・地域・業種など）の QueryKey に `['master', ...]` prefix が含まれているか
+- `setQueryDefaults` の登録順序が generic → specific の順になっているか
+
+**QueryKey のルール (3.2.2) [MUST]**
+- QueryKey に含める値がシリアライズ可能か:
+  - 許可: `string`, `number`, `boolean`, `null`, プレーンオブジェクト, 配列
+  - 禁止: `Date`, クラスインスタンス, `function`, `undefined`, `Symbol`
+- オプショナルな `params` にデフォルト値が設定されているか（`undefined` と `{}` でキャッシュが分離する問題を防止）
+
+**enabled / queryKey のリアクティブルール (3.2.3) [MUST]**
+- Query の依存パラメータが `queryKey` に含まれているか
+- `enabled` は実行可否のゲートに限定されているか
+
+**queryFn の signal 対応 (3.3) [MUST]**
+- `queryFn` が `signal` を受け取りキャンセルに対応しているか
+
+**Mutation パターン (3.4) [MUST]**
+- `invalidateQueries` は prefix 一致をデフォルトとしているか
+- exact 一致が必要な場合は明示されているか
+
+**QueryClient シングルトン (3.5) [MUST]**
+- アプリ全体で単一の QueryClient インスタンスを使用しているか
 
 ---
 
@@ -87,29 +205,83 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 以下を検出する:
 
-**コンポーネント (4.1-4.7)**
+**基本ルール (4.1) [MUST]**
 - `<script setup lang="ts">` でない Vue SFC がないか（Options API 禁止）
-- Props/Emits にランタイム宣言（`defineProps({ title: String })` 形式）を使用していないか（型定義必須）
-- `v-model` で `defineModel()` を使わず手動実装していないか
-- render 関数を使用していないか（shared/ui 以外禁止）
-- DOM 参照に `useTemplateRef()` でなく `ref()` を使っていないか
 
-**サイズ制限 (4.2, 5.4)**
-- `<template>` が 140 行超、`<script setup>` が 120 行超でないか（Hard 上限）
-- Props が 10 個超、Emits が 8 個超でないか（Hard 上限）
-- composable が 180 行超、公開 API が 7 個超でないか
+**サイズ制限 (4.2) [MUST/SHOULD]**
 
-**Composable (5.1-5.5)**
-- composable が可変 state を `readonly()` なしで返していないか
-- setup 同期フェーズ外（`await` 後）で composable を呼んでいないか
+| 対象 | Soft 上限 | Hard 上限 | 超過時 |
+|------|-----------|-----------|--------|
+| `<template>` 行数 | 100 | 140 | Soft超過: PR に分割理由1行必須 / Hard超過: 🔴 違反 |
+| `<script setup>` 行数 | 80 | 120 | Soft超過: composable 抽出を検討 / Hard超過: 🔴 違反 |
+| Props 数 | 7 | 10 | Soft超過: オブジェクト型に集約 or 分割検討 / Hard超過: 🔴 違反 |
+| Emits 数 | 5 | 8 | Soft超過: イベント設計見直し / Hard超過: 🔴 違反 |
 
-**provide / inject (6.1-6.3)**
-- `InjectionKey<T>` なしで `provide/inject` を使っていないか（型安全性必須）
+**Props / Emits (4.3) [MUST]**
+- Props/Emits にランタイム宣言（`defineProps({ title: String })` 形式）を使用していないか
+- 型定義（`defineProps<{ title: string }>()` 形式）を使用しているか
 
-**イベントハンドリング (11.1-11.3)**
-- emit 名が kebab-case でないケース
-- 子コンポーネント内で async 副作用を直接実行していないか（親が制御すべき）
+**v-model (4.4) [MUST]**
+- `defineModel()` (Vue 3.5) を使用しているか
+- `defineModel` の `set` 内で非同期副作用を行っていないか
+
+**Slots (4.5) [MUST]**
+- slot が表示カスタマイズ専用になっているか（業務ロジックを受けていないか）
+
+**render 関数 (4.6) [MUST]**
+- render 関数を使用していないか
+- **例外**: `shared/ui/` の headless ラッパーのみ許可
+
+**useTemplateRef (4.7) [MUST]**
+- DOM 参照に `useTemplateRef()` (Vue 3.5) を使用しているか（`ref()` で DOM 参照していないか）
+
+**Composable 命名 (5.1) [MUST]**
+- 通常の composable: `useXxx`
+- Factory DI 版: `createUseXxx`（依存注入が必要な場合のみ使用）
+
+**Composable 返り値 (5.2) [MUST]**
+- 可変 state を外部に `readonly()` なしで直接公開していないか
+- 返り値パターン: `readonly(ref)` で保護、`computed` で派生値、command 関数で操作
+
+**setup 同期フェーズルール (5.3) [MUST]**
+- Vue ライフサイクル依存の composable が setup 同期フェーズでのみ呼ばれているか
+- `await` の後で composable を呼んでいないか
+
+**Composable サイズ制限 (5.4) [MUST/SHOULD]**
+
+| 指標 | Soft | Hard |
+|------|------|------|
+| 行数 | 120 | 180 |
+| 公開 API 数 | 5 | 7 |
+
+**Factory + DI パターン (5.5) [SHOULD/SHOULD NOT]**
+- 分岐ロジックが多く依存差し替えが必要な composable に適用されているか [SHOULD]
+- 単純な TanStack Query ラッパーに適用されていないか [SHOULD NOT]（MSW で十分）
+
+**provide / inject 使用条件 (6.1) [MUST]**
+判定フロー:
+1. 同一サブツリー内で深い受け渡しがあるか？ → No: props/emits で十分
+2. 複数インスタンスを同時に持ちたいか？ → Yes: provide/inject
+3. アプリ全体で横断的に共有するか？ → Yes: composable singleton → No: provide/inject
+
+**InjectionKey (6.2) [MUST]**
+- 型安全な `InjectionKey<T>` を使用しているか（文字列キーの直接使用禁止）
+
+**必須 vs オプショナル inject (6.3)**
+- 必須注入: 未 provide なら throw するパターンになっているか
+- オプショナル注入: null 返却のパターンになっているか
+
+**emit 命名 (11.1) [MUST]**
+- emit 名が kebab-case で統一されているか
+
+**非同期イベント (11.2) [MUST]**
+- 子コンポーネントが「通知」のみで、親が「副作用実行」を制御しているか
+- 子コンポーネント内で async 副作用（API コール等）を直接実行していないか
+- 親が loading 制御（`saving` ref パターン等）を行っているか
+
+**event bus (11.3) [MUST]**
 - mitt / event bus を使用していないか（原則禁止）
+- **例外**: `app/` 層で外部イベント（WebSocket, BroadcastChannel）を受けるアダプタのみ [MAY]
 
 ---
 
@@ -117,17 +289,57 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 以下を検出する:
 
-**型管理 (7.1-7.6)**
-- `any` 型の使用がないか（MUST 禁止）
-- `as unknown as T` の使用がないか（原則禁止）
-- 手書きコードで `enum` を使用していないか（SHOULD NOT、コード生成は例外）
-- `as const` を使わず enum を手書きしていないか
+**基本型ルール (7.1) [MUST/SHOULD]**
+- `any` 型の使用がないか [MUST]（外部入力は `unknown` で受けて絞り込む）
+- `as unknown as T` の使用がないか [MUST]（原則禁止）
+- 手書きコードで `enum` を使用していないか [SHOULD NOT]
+  - **例外**: コード生成（OpenAPI 等）による `enum` は許容 [MAY]
+- `type` をデフォルト使用しているか [SHOULD]
+- `interface` は拡張前提の公開契約のみに使用しているか [SHOULD]
 
-**セキュリティ (12)**
-- `v-html` を使用していないか（sanitizeHtml 経由のみ例外）
-- `VITE_*` 環境変数に秘密情報が含まれていないか
-- API endpoint が文字列直書きになっていないか（定数/関数化必須）
-- `console.log` / `console.error` / `console.warn` を直接使用していないか（logger 経由必須）
+**型定義の配置 (7.2) [MUST]**
+
+| 配置場所 | 内容 |
+|----------|------|
+| `entities/*/model/{entity}Types.ts` | ドメインモデル型（`User`, `Company`, `Journal`） |
+| `entities/*/model/errors/` | ドメイン固有エラーコード・カタログ |
+| `entities/*/api/{entity}Schema.ts` | API 入出力 Zod スキーマ |
+| `entities/*/api/mapBackendError.ts` | バックエンドエラーコード変換 |
+| `features/*/model/{feature}Schema.ts` | フォームバリデーション Zod スキーマ |
+| `shared/types/` | 汎用型（`Paged<T>`, `AppError`, `ApiResult<T>`） |
+| `shared/lib/errors/` | 共通エラーコード・カタログ |
+| `shared/lib/validation/` | 共通プリミティブ Zod スキーマ |
+
+**文字列リテラル Union と as const (7.3)**
+- リテラル Union or `as const` オブジェクトを使用しているか
+- 手書きの `enum` を使用していないか
+
+**ジェネリック型 (7.4) [SHOULD]**
+- 2箇所以上で再利用し、ドメイン非依存な場合のみジェネリック化しているか
+
+**Zod による runtime validation (7.5) [MUST/SHOULD]**
+- 認証・権限・金額などクリティカルなエンドポイントは本番でも Zod で検証しているか [MUST]
+- 大量リスト系は開発時のみ検証 [SHOULD]
+- 検証は API 層で1回だけ行い、UI 層に生データを持ち込んでいないか [MUST]
+
+**型 assertion の許可範囲 (7.6) [MAY]**
+- assertion は以下の場合のみ許可:
+  - DOM API（`useTemplateRef<HTMLInputElement>`）
+  - ライブラリ境界で runtime check 後の最小 assertion
+
+**セキュリティ (12) [MUST]**
+
+| ルール | 検出方法 |
+|--------|----------|
+| `v-html` 原則禁止（`sanitizeHtml()` 経由のみ例外） | テンプレート内の `v-html` を検索 |
+| CSRF トークンは unsafe method (`POST/PUT/PATCH/DELETE`) のみ自動付与 | httpClient のインターセプター実装を確認 |
+| `VITE_*` に秘密情報を置かない（公開情報のみ） | `.env*` ファイルの内容を確認 |
+| API endpoint は定数 / 関数化（文字列直書き禁止） | `api.get('/api/...` のような直書きを検索 |
+| Open Redirect 対策（遷移先 URL のホワイトリスト） | `window.location`, `router.push` の遷移先を確認 |
+| アップロード時の MIME / type / size チェック | ファイルアップロード処理を確認 |
+| PII（個人識別情報）のログ出力禁止 | logger 呼び出しの引数を確認 |
+| `console.log`/`console.error`/`console.warn` 直接使用禁止 | `console.` を検索（`shared/lib/logger.ts` 経由必須） |
+| セッション Cookie: `Secure` + `HttpOnly` + `SameSite` | バックエンド責務だがフロント設定に矛盾がないか確認 |
 
 ---
 
@@ -135,17 +347,41 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 以下を検出する:
 
-**パフォーマンス (8.1-8.4)**
-- `v-for` に `:key` がない、または `index` を key に使っていないか
-- `v-if` と `v-for` を同一要素に併用していないか
-- `computed` 内で副作用（API コール、DOM 操作等）を行っていないか
-- ページコンポーネントが route-level code splitting されているか（lazy import）
+**テンプレート (8.1) [MUST/SHOULD]**
+- `v-for` に一意な安定 `:key` 必須、`index` を key に使用していないか [MUST]
+- `v-if` と `v-for` を同一要素に併用していないか [MUST]
+- `v-once` で静的コンテンツの再描画を防止しているか [SHOULD]
 
-**アクセシビリティ (16)**
-- `<label>` と `<input>` の `for`/`id` 紐付けが漏れていないか
-- `<img>` に `alt` 属性がないケース
-- モーダルコンポーネントにフォーカストラップがあるか
-- キーボードナビゲーション（Tab, Enter, Escape）への対応漏れ
+**大量データ表示 (8.2) [MUST/SHOULD]**
+- 行リスト > 200行 or DOM ノード > 2,000 の場合に virtual scrolling を使用しているか [MUST]
+- マトリクス rows × cols > 10,000 の場合に行・列両方の仮想化をしているか [MUST]
+- 大規模テーブルの行に `v-memo` で再描画最適化をしているか [SHOULD]
+
+**リアクティビティ最適化 (8.3) [MUST/SHOULD]**
+- `computed` 内で副作用（API コール、DOM 操作、状態変更等）を行っていないか [MUST]
+- watch 内の非同期処理で `onWatcherCleanup` による abort をしているか [MUST]
+- 100件超の配列・深いオブジェクトに `shallowRef` / `shallowReactive` を使用しているか [SHOULD]
+- マスターデータ（更新しない参照データ）に `markRaw` を使用しているか [SHOULD]
+- `watch` の `immediate` は必要時のみ使用しているか（デフォルトは lazy）[SHOULD]
+
+**コード分割 (8.4) [MUST/SHOULD]**
+- 全ページが route-level code splitting されているか（lazy import）[MUST]
+- 初期表示不要かつ重い UI に `defineAsyncComponent` を使用しているか [SHOULD]
+  - `timeout: 15000`, `suspensible: true` の設定
+- `manualChunks` で vendor 分離（vue/vue-router, @tanstack/vue-query 等）しているか [SHOULD]
+- バンドル予算: 初期 JS gzip 250 KB 以内 [SHOULD]
+
+**アクセシビリティ (16) [MUST/SHOULD]**
+
+| ルール | 強度 |
+|--------|------|
+| `<label>` と `<input>` を `for` / `id` で紐付け | MUST |
+| `<table>` に `scope` 属性 | SHOULD |
+| キーボードナビゲーション対応（Tab, Enter, Escape） | MUST |
+| 動的コンテンツに `aria-live` | SHOULD |
+| モーダルにフォーカストラップ | MUST |
+| 画像に `alt` 属性（装飾的な場合は空文字 `alt=""`） | MUST |
+| テスト: role / text 優先、data-testid は補助 | SHOULD |
 
 ---
 
@@ -153,27 +389,123 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 以下を検出する:
 
-**エラーハンドリング (10.1-10.6)**
+**エラーハンドリング 4層パイプライン (10.1) [MUST]**
+各層の責務が守られているか:
+
+| レイヤー | 責務 | 例 |
+|----------|------|-----|
+| `shared/api` | Axios 例外を `AppError` に正規化 | `normalizeAxiosError()` |
+| `entities` | API エラーをドメイン意味に変換 | `toUserDomainError()` |
+| `features` | リトライ / ロールバック制御 | optimistic update rollback |
+| `pages/app` | Toast / Dialog / エラーページ表示 | `AppErrorBoundary.vue` |
+
+**AppError 型 (10.2) [MUST]**
+- `AppError` 型が `kind`, `code`, `message`, `messageKey?`, `status?`, `retryable`, `cause?`, `details?` を持っているか
+- `AppErrorKind` が `'network' | 'http' | 'auth' | 'validation' | 'domain' | 'unknown'` の6種類か
+
+**エラー定数管理 (10.3) [MUST]**
 - エラーメッセージが関数内にハードコードされていないか（カタログ定数経由必須）
-- `console.log`/`console.error`/`console.warn` を直接使用していないか（logger 経由必須）
-- AppError 4層パイプラインに沿っているか
+- エラー定数のファイル配置が正しいか:
+  - `shared/lib/errors/` - HTTP層・インフラ共通のエラー
+  - `entities/*/model/errors/` - ドメイン固有のビジネスエラー
+  - `entities/*/api/` - バックエンドコード → フロントコードの変換
+  - `features/*/model/errors/` - 操作フロー固有のエラー
+- エラーコードが `as const` オブジェクトで定義され、`SCOPE.ERROR_NAME` 形式の命名か [MUST]
+- エラーカタログが `catalog.ts` に `messageKey` + `defaultMessage` + `retryable` を持つ形式で定義されているか [MUST]
+- バックエンドエラーコードのマッピングが `entities/*/api/mapBackendError.ts` に配置されているか [MUST]
+- 未知のバックエンドコードが `COMMON.UNKNOWN` にフォールバックしているか [MUST]
 
-**会計システム固有 (15.1-15.5)**
-- 金額を `number` で直接演算していないか（Amount 型関数必須）
-- 仕訳系 Mutation で楽観更新（optimistic update）を使っていないか（禁止）
-- 物理削除 API を呼んでいないか（論理削除のみ）
-- 丸めが明細単位で行われているか
+**正規化関数 (10.4) [MUST]**
+- `normalizeAxiosError()` がカタログから `message` / `retryable` を取得しているか（ハードコード禁止）
+- ステータスコードごとの分岐（401→auth, 403→auth, 422→validation 等）が適切か
 
-**テスト (9.1-9.6)**
-- `data-testid` が `scope-element-action` の kebab-case でないケース
-- テストで `console.*` を直接使用していないか
+**グローバルエラーバウンダリの表示方針 (10.5) [MUST]**
+- `retryable = true` → toast
+- `retryable = false` → dialog + fallback UI
+
+**ログ (10.6) [MUST]**
+- `console.log` / `console.error` / `console.warn` を直接使用していないか
+- `shared/lib/logger.ts` 経由でのみ出力しているか
+
+**会計 - 金額型 (15.1) [MUST]**
+- 金額を `number` で直接演算（`+ - * /`）していないか（Amount 型関数必須）
+- Amount 型が Branded type（`number & { readonly __brand: 'Amount' }`）として実装されているか
+- `createAmount()` / `parseAmount()` / `addAmounts()` / `subtractAmounts()` / `multiplyAmount()` の関数経由で演算しているか
+- 丸めルール（四捨五入 / 切上げ / 切捨て）が税計算含めて統一されているか
+
+**会計 - 丸めタイミング (15.1.1) [MUST]**
+- 丸めが明細単位で行われているか（伝票単位の一括丸め禁止）
+- 正: 各明細で丸め済みの値を合計
+- 誤: 合計後に丸め
+
+**会計 - 日付規約 (15.2) [MUST]**
+- `timestamp(UTC)` と `businessDate(会計日付)` を分離して扱っているか
+- 会計日付が `YYYY-MM` 形式か（決算月は `YYYY-13`）
+
+**会計 - 仕訳系 Mutation (15.3) [MUST]**
+- 楽観更新 (optimistic update) を使用していないか（禁止）
+- 冪等キー (idempotency key) が含まれているか（`Idempotency-Key: crypto.randomUUID()` ヘッダー）
+- 二重送信防止が UI 側（`submitting` ref）+ API 側（idempotency key）の両方で実装されているか
+
+**会計 - 監査証跡 (15.4) [MUST]**
+- フロントエンドからの削除リクエストが論理削除のみか（物理削除 API を呼んでいないか）
+
+**会計 - 締め処理 (15.5) [MUST]**
+- 月次 / 年度締め後のデータ変更を UI で禁止しているか
+- `JournalPeriodStatus` 型（`'open' | 'closed' | 'locked'`）に基づく制御があるか
+
+**テスト 4分類 (9.1)**
+
+| 分類 | 環境 | ファイル名 |
+|------|------|-----------|
+| 純関数 | Vitest (jsdom) | `*.spec.ts` |
+| Composable | Vitest (jsdom) + MSW | `*.spec.ts` |
+| VRT | Playwright (Docker) | `tests/visual/*.spec.ts` |
+| E2E | Playwright | `tests/e2e/*.spec.ts` |
+
+**テスト命名規約 (9.2)**
+- `describe`: 対象 + 条件
+- `it`: 期待結果を現在形で記述
+
+**テストヘルパー (9.3) [MUST]**
+- 共通ヘルパーが `tests/helpers/` に集約されているか
+- `createTestQueryClient()` / `mountWithQuery()` の共通関数を使用しているか
+
+**MSW ハンドラー (9.4) [MUST]**
+- ドメイン別にハンドラーが分離されているか
+- `setupServer` / `resetHandlers` のセットアップが正しいか
+
+**カバレッジ目標 (9.5) [MUST/SHOULD]**
+
+| レイヤー | Lines | Branches | 強度 |
+|----------|-------|----------|------|
+| `shared/` | 90% | 85% | MUST |
+| `entities/` | 80% | 75% | MUST |
+| `features/` | 70% | 65% | SHOULD |
+| `pages/` | 50% | 40% | SHOULD（E2E で補完） |
+
+- diff coverage 80% 以上 [SHOULD]
+
+**data-testid (9.6) [MUST/SHOULD]**
+- セレクタ優先順位: role/text > data-testid [SHOULD]
+- `data-testid` が `scope-element-action` の kebab-case か [MUST]
 
 **命名規約 (13.1-13.4)**
-- Vue SFC ファイル名が PascalCase でないケース
-- TypeScript ファイル名が camelCase でないケース
-- ディレクトリ名が kebab-case でないケース
-- 定数が UPPER_SNAKE_CASE でないケース
-- composable 名が `use` + PascalCase でないケース
+
+| 種類 | 規約 | 例 |
+|------|------|-----|
+| Vue SFC ファイル名 | PascalCase | `LoginPage.vue` |
+| TypeScript ファイル名 | camelCase | `userKeys.ts` |
+| ディレクトリ名 | kebab-case | `journal-upload/` |
+| テストファイル | `*.spec.ts` | `userApi.spec.ts` |
+| 変数 / 関数 | camelCase | `fetchUser` |
+| 型 / interface | PascalCase | `User` |
+| 定数 | UPPER_SNAKE_CASE | `MAX_FILE_SIZE` |
+| Composable | `use` + PascalCase | `useCurrentUser` |
+| InjectionKey | camelCase + `Key` | `invoiceContextKey` |
+| CSS class | kebab-case | `form-input` |
+| QueryKey | Factory 経由 `['entity', 'action', params?]` | `companyKeys.detail(id)` |
+| data-testid | `scope-element-action` kebab-case | `login-form-submit` |
 
 ---
 
@@ -311,6 +643,14 @@ git diff --name-only origin/dev...HEAD -- 'frontend/src/**/*.vue' 'frontend/src/
 
 - 検出フェーズではコードの修正は行わない（検出と報告のみ）
 - 修正はプラン承認後に実施する
-- 検出が曖昧な場合（例: shared/ui/ 内の render 関数は許可）は、例外条件を考慮して誤検知を避ける
+- 検出が曖昧な場合は、例外条件を考慮して誤検知を避ける。主な例外:
+  - `shared/ui/` のデザインシステム基盤部品は shared に配置可 (1.3)
+  - 同一スライス内のテスト・Storybook は `index.ts` 経由不要 (1.4)
+  - `@x` パターンでの entities 間 `import type` は許可 (1.6.1)
+  - Pinia は3条件全て満たす場合のみ導入検討可 (2.2)
+  - コード生成による `enum` は許容 (7.1)
+  - `shared/ui/` の headless ラッパーのみ render 関数許可 (4.6)
+  - `app/` 層の外部イベントアダプタのみ event bus 許可 (11.3)
+  - DOM API / ライブラリ境界での最小 assertion は許可 (7.6)
 - 対象外のファイル（`*.spec.ts`, `*.stories.ts`, `*.test.ts`）はテスト系ルールのみ適用し、本体コード向けルールは除外する
 - `CODING_STANDARDS.md` の原文を正とし、解釈に迷ったら厳しい方（MUST 寄り）を採用する
