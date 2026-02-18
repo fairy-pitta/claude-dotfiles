@@ -29,6 +29,18 @@ echo "🔧 Copying hook scripts..."
 cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/"
 chmod +x "$CLAUDE_DIR/scripts/"*.sh
 
+# Copy custom skills
+echo "🎯 Copying custom skills..."
+for skill_dir in "$SCRIPT_DIR/skills"/*/; do
+  skill_name="$(basename "$skill_dir")"
+  cp -r "$skill_dir" "$CLAUDE_DIR/skills/$skill_name"
+done
+
+# Copy standalone skill files (*.md directly in skills/)
+for skill_file in "$SCRIPT_DIR/skills/"*.md; do
+  [ -f "$skill_file" ] && cp "$skill_file" "$CLAUDE_DIR/skills/"
+done
+
 # Clone Superpowers (if not already present)
 if [ ! -d "$CLAUDE_DIR/skills/superpowers" ]; then
   echo "⚡ Installing Superpowers skills..."
@@ -62,6 +74,7 @@ echo "✅ Setup complete!"
 echo ""
 echo "Installed:"
 echo "  - Custom commands (9 commands)"
+echo "  - Custom skills (dotfiles/skills/)"
 echo "  - Hook scripts (auto-format, deny-check)"
 echo "  - Superpowers skills (14 skills)"
 echo "  - MCP servers (Playwright, Serena)"
