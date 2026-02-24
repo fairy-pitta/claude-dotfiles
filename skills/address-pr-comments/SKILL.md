@@ -9,7 +9,7 @@ PRの未解決レビューコメントを全件取得し、**妥当性を判断�
 
 **鉄則: どんな些細なコメントでも「無視」はしない。妥当でなければPRにコメントで返信、妥当であれば修正する。必ずどちらかの対応を取る。**
 
-**Announce at start:** "fix-review-loop を開始します。未解決コメントの妥当性を確認して全件対応します。"
+**Announce at start:** "address-pr-comments を開始します。未解決コメントの妥当性を確認して全件対応します。"
 
 ---
 
@@ -193,20 +193,65 @@ gh api graphql -f query='
 ' -f threadId="<THREAD_ID>"
 ```
 
-### 6-2. 完了レポート
+---
+
+## Step 7: レビュースキルへの観点追加（最重要）
+
+**このPRで修正した内容は、セルフレビューを潜り抜けてきた欠点。次回以降は `self-review` で自動検出されるよう、対応するレビュースキルに観点として追記する。**
+
+### 7-1. 各修正をbackend/frontendに分類
+
+修正したコメントをファイルパスで分類:
+- `backend/` 配下の修正 → `backend-coderabbit` に追記
+- `frontend/` 配下の修正 → `frontend-coderabbit` に追記
+
+### 7-2. 観点を追記する
+
+`~/claude-dotfiles/skills/backend-coderabbit/SKILL.md` または `~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` の最も関連するセクションに、新しいチェック項目として追記する。
+
+**追記フォーマット:**
+```
+- **<観点名>** `[新観点 from PR#<PR番号>]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
+```
+
+**例:**
+```
+- **useEffectの依存配列の漏れ** `[新観点 from PR#466]` - `useEffect`の依存配列に使用している変数が全て含まれているか。
+  漏れがあると古い値を参照したまま動作するバグになる。ESLintの`exhaustive-deps`ルールで検出可能。
+```
+
+既存のセクションに収まらない場合は、最も近いセクションの末尾に追記する。
+
+### 7-3. claude-dotfilesにコミット＆プッシュ
+
+```bash
+cd ~/claude-dotfiles
+git add skills/backend-coderabbit/SKILL.md skills/frontend-coderabbit/SKILL.md
+git commit -m "feat: PR#<PR番号>の指摘からbackend/frontend-coderabbitに観点を追加
+
+<追加した観点の概要を箇条書き>"
+git push origin main
+```
+
+---
+
+## Step 8: 完了レポート
 
 ```
-=== Fix Review Loop Complete ===
+=== Address PR Comments Complete ===
 
 未解決コメント総数: <N>件
 
 対応結果:
-  ✅ 修正して解決:     <N>件
-  💬 妥当でないと返信: <N>件
+  ✅ 修正して解決:                <N>件
+  💬 妥当でないと返信:            <N>件
+  📚 レビュースキルに観点追加:    <N>件（backend: N件 / frontend: N件）
 
-コミット一覧:
+コミット一覧（このリポジトリ）:
   - <hash>: <コミットメッセージ>
-  - ...
+
+コミット一覧（claude-dotfiles）:
+  - <hash>: feat: PR#<N>の指摘からレビュースキルに観点を追加
 ```
 
 ---
