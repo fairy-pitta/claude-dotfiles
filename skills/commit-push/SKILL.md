@@ -87,15 +87,19 @@ git commit -m "fix: ChangePasswordModal.vueのFloating Promiseをvoid修飾に�
 ## Critical Rules
 
 - **main/master ブランチへ直接コミットは絶対NG**
-- `git add -A` は使わず、変更ファイルを個別に確認して `git add <file>` でステージング
 - コミット前に `git diff --staged` で差分を確認
 - コミットメッセージは**日本語**（CLAUDE.mdルール準拠）
 
 ## Process
 
 1. 現在のブランチを確認（デフォルトブランチでないことを検証）
-2. `git diff --staged` および `git status` で変更内容とテーマを把握
-3. テーマが複数あれば分割コミットを計画する
-4. 各テーマについて具体的なコミットメッセージを作成（禁止表現チェック）
-5. `git add <files>` → `git commit -m "..."` → `git push`
-6. コミットハッシュを報告
+2. **テストを全て実行して通過を確認してからコミットする（必須）**
+   - unit / integration テストが存在する場合は実行
+   - e2e テストが存在する場合は実行
+   - VRT（Visual Regression Test）が存在する場合は実行
+   - いずれかが失敗している場合はコミットせず、先に修正する
+3. `git status` と `git diff` で変更内容とテーマを把握
+4. テーマが複数あれば分割コミットを計画する
+5. 各テーマについて具体的なコミットメッセージを作成（禁止表現チェック）
+6. `git add` → `git commit -m "..."` → `git push`
+7. コミットハッシュを報告
