@@ -1,13 +1,13 @@
 ---
 name: reviewer
-description: PR inline code review - runs coderabbit-review then posts each comment directly on the GitHub PR diff as individual inline comments
+description: PR inline code review - runs backend-coderabbit or frontend-coderabbit (auto-detected) then posts each comment directly on the GitHub PR diff as individual inline comments
 ---
 
 # PR Inline Reviewer
 
-Run a `coderabbit-review` style code review, then **post each finding directly on the PR as an individual inline comment** on the corresponding code line using `gh api`.
+Run a `backend-coderabbit` / `frontend-coderabbit` style code review (auto-detected from changed files), then **post each finding directly on the PR as an individual inline comment** on the corresponding code line using `gh api`.
 
-**Core principle:** Leverage the coderabbit-review skill for thorough analysis, then deliver results as inline PR comments — not as one big summary comment.
+**Core principle:** Leverage backend-coderabbit / frontend-coderabbit skills for thorough analysis, then deliver results as inline PR comments — not as one big summary comment.
 
 **Announce at start:** "reviewer スキルでレビューしてインラインコメントを投稿します"
 
@@ -43,18 +43,54 @@ If no PR exists, inform the user and stop.
 
 ## Step 2: Perform Code Review
 
-**Use the coderabbit-review methodology** for the review itself. This means:
+**変更ファイルのパスを見てレビュー観点を自動選択する。**
 
-1. Get the diff: `git diff origin/<base_branch>...HEAD`
-2. Read each changed file to understand context
-3. Apply the **5-pass grouped review** (Groups A-E, 27 review points) from coderabbit-review:
-   - **Group A:** Type Safety (Any type, layer type consistency, FE annotations, etc.)
-   - **Group B:** Architecture & Placement (feature dependencies, layer violations, Result type, etc.)
-   - **Group C:** Error Handling & Security (validation, API error normalization, etc.)
-   - **Group D:** Performance (N+1 queries, O(N*M) in templates, redundant awaits)
-   - **Group E:** Code Quality & DRY (unused code, dead code, v-for keys, comment accuracy, etc.)
-4. Check against CLAUDE.md project rules
-5. Filter out obvious/trivial findings (e.g., things that are intentional or self-evident)
+```bash
+git diff --name-only origin/<base_branch>...HEAD
+```
+
+| 変更ファイルのパス | 使用する観点 |
+|---|---|
+| `backend/` のみ | **backend-coderabbit** の11観点を全適用 |
+| `frontend/` のみ | **frontend-coderabbit** の11観点を全適用 |
+| 両方混在 | **両スキル**の観点を各ファイルに対して適用 |
+| その他（`.github/`, `CLAUDE.md` 等） | 一般的なコード品質チェック |
+
+### backend-coderabbit の11観点（`backend/` ファイルに適用）
+
+1. **Architecture Compliance** — Feature間依存, Domain純粋性, DomainRepositoryのDTO依存違反, Transaction配置
+2. **Type Safety** — Any型禁止, Result型タプルアンパック, `_`でエラー無視はNG, Enum必須
+3. **Security & Authorization** — permission_classes明示, write_only, 認可バイパス経路
+4. **Error Messages & Constants** — 文字列リテラル禁止, logger/print禁止
+5. **Database Performance** — N+1, SELECT*禁止（.only()/.values()）, bulk操作
+6. **Validation & Error Handling** — 網羅性, エッジケース, 正規化後チェック, 年範囲検証
+7. **Test Quality** — pytest命名順序（動作_条件_期待結果）, fixture活用, CSRF有効化, 正常系カバレッジ
+8. **Unused Code Detection** — 未使用関数・型・定数・import
+9. **Code Organization & DRY** — 重複除去, deprecated API, コメント正確性, 型アノテーション一貫性
+10. **Migration & DB Schema** — リバースマイグレーション, ロールバックリスク
+11. **Syntax & Basic Quality** — 構文エラー, マージコンフリクトマーカー, 命名規約
+
+### frontend-coderabbit の11観点（`frontend/` ファイルに適用）
+
+1. **FSD Architecture Compliance** — index.ts経由import必須（最多指摘）, features間import禁止, ComposablesとRepository IFの関係
+2. **Type Safety** — any/enum/console禁止, branded型（Amount）, `<script setup lang="ts">`必須
+3. **TanStack Vue Query** — QueryKey Factoryパターン, Pinia非推奨, 楽観更新禁止, invalidateQueries
+4. **State Management** — composable singletonのreadonly保護, computed活用
+5. **Error Handling** — エラーカタログ定数（直書き禁止）, 4層パイプライン
+6. **Vue.js Patterns** — v-for key安定性, 非同期レースコンディション, Floating Promise, UIガード一致
+7. **Test Quality** — MSW, FormData axios adapter, 型安全モック, テストケース網羅性
+8. **Security** — XSS対策（v-html）, 脆弱ライブラリ（xlsx等）
+9. **Unused Code Detection** — 未使用composable・型・import
+10. **Code Organization & DRY** — コンポーネント分割, @pages/エイリアス, ルーター命名一貫性
+11. **Syntax & Basic Quality** — TS構文エラー, マージコンフリクトマーカー
+
+### 共通手順
+
+1. Diffを取得: `git diff origin/<base_branch>...HEAD`
+2. 各変更ファイルを読んでコンテキストを把握
+3. 上記の観点を各ファイルのパスに応じて適用
+4. CLAUDE.mdのプロジェクトルールと照合
+5. 意図的・自明な指摘はフィルタアウト
 
 For each finding, record:
 - The target file path
@@ -247,8 +283,9 @@ If `gh api` returns a 422 error with `"subject_type" is not a permitted key`:
 - **Never use the `line` or `subject_type` API parameters** — use `position` only
 - **Never add fluff or excuses to comments** — keep them direct and concise
 - **Never post on lines outside the diff** — use general PR comments for those
-- **Never skip the coderabbit-review 5-pass review** — this skill's value is combining thorough review with precise PR delivery
+- **Never skip the backend-coderabbit / frontend-coderabbit review** — this skill's value is combining thorough domain-specific review with precise PR delivery
+- **Never apply backend observations to frontend files or vice versa** — always match the review checklist to the file's path
 
 ---
 
-**Remember:** This skill combines the thoroughness of coderabbit-review with the precision of inline PR comments. Each comment appears directly on the code line in the PR diff view, making it easy for developers to see exactly what needs attention and where.
+**Remember:** This skill combines the thoroughness of backend-coderabbit / frontend-coderabbit (auto-selected by file path) with the precision of inline PR comments. Each comment appears directly on the code line in the PR diff view, making it easy for developers to see exactly what needs attention and where.
