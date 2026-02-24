@@ -11,6 +11,8 @@ PRの未解決レビューコメントを全件取得し、**妥当性を判断�
 
 **Announce at start:** "address-pr-comments を開始します。未解決コメントの妥当性を確認して全件対応します。"
 
+**コンテキスト管理（全ステップ共通）:** 各ステップの開始前にコンテキスト使用率を確認し、**80%を超えていたら `/compact` を実行してからステップを継続すること。**
+
 ---
 
 ## Step 0: Worktreeの作成と移動
@@ -76,36 +78,37 @@ gh pr view --json number,title,reviewThreads --jq '
 
 ## Step 3: 妥当でないコメントをユーザーに提示
 
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
+
 妥当でないと判断したコメントを表にまとめてユーザーに見せる。
 
 ```
-## 妥当でないと判断したコメント（PRに返信予定）
+## 妥当でないと判断したコメント（CodeRabbitスレッドに返信予定）
 
 | # | ファイル | 行 | 投稿者 | コメント概要 | 妥当でない理由 |
 |---|---------|-----|--------|------------|--------------|
-| 1 | `path/to/file.ts` | 42 | @author | コメントの要約 | すでに正しく実装済み。CLAUDE.md X.Y節に準拠している |
-| 2 | `backend/app/...` | 88 | @author | コメントの要約 | プロジェクトルール上意図的な設計。変更不要 |
+| 1 | `path/to/file.ts` | 42 | @coderabbitai | コメントの要約 | すでに正しく実装済み。CLAUDE.md X.Y節に準拠している |
+| 2 | `backend/app/...` | 88 | @coderabbitai | コメントの要約 | プロジェクトルール上意図的な設計。変更不要 |
 
-上記をPRにコメントで返信します。よろしいですか？
+上記の各コメントスレッドに返信します。よろしいですか？
 ```
 
 **ユーザーの確認を待つ。** 承認されたら Step 4 へ進む。
 
 ---
 
-## Step 4: 妥当でないコメントをPRに返信
+## Step 4: 妥当でないコメントをCodeRabbitスレッドに返信
 
-ユーザーの確認後、各コメントに対してPRへ返信を投稿する。
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
+
+ユーザーの確認後、各コメントの **CodeRabbitスレッドに直接返信** を投稿する。
+`in_reply_to` に CodeRabbit のコメント ID を指定してスレッドに返信すること。
 
 ```bash
-# インラインコメントへの返信
-gh api repos/{owner}/{repo}/pulls/{pr}/comments \
-  --method POST --input - <<'JSONEOF'
-{
-  "body": "<返信内容>",
-  "in_reply_to": <comment_id>
-}
-JSONEOF
+# CodeRabbitコメントスレッドへの返信（in_reply_to 必須）
+gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
+  --method POST \
+  --field body="<返信内容>"
 ```
 
 **返信の書き方:**
@@ -124,14 +127,20 @@ JSONEOF
 
 ## Step 5: 妥当なコメントをplan modeで修正
 
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
+
 妥当と判断したコメントを修正する。
 
-### 5-1. Plan Modeで修正計画を立てる
+### 5-1. **Plan Modeに入る（必須）**
 
-妥当なコメントを全て列挙し、修正方針を立てる:
+**必ず EnterPlanMode（plan mode）を使用すること。** 修正を始める前に plan mode に入り、実装計画をユーザーに提示してから承認を得ること。
+
+妥当なコメントを全て列挙し、修正方針を立てる。**作業ブランチを計画の冒頭に必ず明記すること。**
 
 ```
 ## 修正計画
+
+**作業ブランチ:** `<branch-name>`（worktree: `.git-worktrees/<branch-name>`）
 
 | # | ファイル | 行 | 内容 | 修正方針 |
 |---|---------|-----|------|---------|
@@ -144,6 +153,8 @@ JSONEOF
 2. 🟠 Major / アーキテクチャ・型安全性
 3. 🟡 Minor / リファクタ
 4. 🔵 Trivial / スタイル・Nitpick
+
+**Plan modeを終了し、ユーザーの承認を得てから実装に入ること。承認前に一切コードを変更しない。**
 
 ### 5-2. 修正を実施する
 
@@ -167,19 +178,22 @@ pnpm -C frontend run test:visual:docker
 
 テストが失敗した場合はコミットせず修正してから再実行する。
 
-### 5-4. コミット
+### 5-4. コミット＆プッシュ
 
-```bash
-git add .
-git commit -m "fix: <コメントの指摘に基づく具体的な修正内容>"
+**`/commit-push` スキルを使用すること。**
+
+```
+/commit-push
 ```
 
 **禁止表現:** `fix: レビュー対応` / `fix: コメント対応` / `fix: 指摘を反映` 等の抽象的表現。
-複数テーマにまたがる場合はコミットを分割する。
+複数テーマにまたがる場合はコミットを分割する（分割した分だけ `/commit-push` を実行する）。
 
 ---
 
 ## Step 6: 完了処理
+
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
 ### 6-1. 修正済みコメントのスレッドを解決
 
@@ -226,12 +240,15 @@ gh api graphql -f query='
 
 ```bash
 cd ~/claude-dotfiles
-git add skills/backend-coderabbit/SKILL.md skills/frontend-coderabbit/SKILL.md
-git commit -m "feat: PR#<PR番号>の指摘からbackend/frontend-coderabbitに観点を追加
-
-<追加した観点の概要を箇条書き>"
-git push origin main
 ```
+
+**`/commit-push` スキルを使用すること。**
+
+```
+/commit-push
+```
+
+コミットメッセージ例: `feat: PR#<PR番号>の指摘からbackend/frontend-coderabbitに観点を追加`
 
 ---
 
