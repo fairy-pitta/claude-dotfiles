@@ -1,9 +1,9 @@
 ---
-name: fix-review-loop
+name: address-pr-comments
 description: PRの未解決コメントを取得し、妥当性を確認。妥当でないものはPRにコメントで返信、妥当なものはplan modeで修正。全コメントに必ず対応（無視ゼロ）。
 ---
 
-# Fix Review Loop
+# Address PR Comments
 
 PRの未解決レビューコメントを全件取得し、**妥当性を判断してから対応**するスキル。
 
