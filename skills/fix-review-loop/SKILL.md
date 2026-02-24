@@ -13,6 +13,22 @@ PRの未解決レビューコメントを全件取得し、**妥当性を判断�
 
 ---
 
+## Step 0: Worktreeの作成と移動
+
+```bash
+# 現在のブランチ名を取得（引数がなければ現在ブランチ）
+BRANCH=${ARGUMENTS:-$(git branch --show-current)}
+
+# worktreeを作成して移動
+/create-worktree $BRANCH
+cd .git-worktrees/$(echo "$BRANCH" | tr '/' '-')
+pwd  # 作業ディレクトリを確認
+```
+
+**以降の全作業はこのworktree内で行う。** `pwd` で場所を確認してから作業すること。
+
+---
+
 ## Step 1: 未解決コメントを全件取得
 
 ```bash
