@@ -1,119 +1,81 @@
 ---
 name: self-review
-description: 複数のレビュースキル（sora-review / backend-coderabbit / frontend-coderabbit / frontend-architecture）を順番に回し、全スキルから指摘がなくなるまでループするオーケストレーションスキル。コンテキスト80%でauto-compact。
+description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
 ---
 
 # Self Review Orchestrator
 
-複数のレビュースキルを順番に適用し、**全スキルから指摘ゼロ**になるまで修正→テスト→レビューのサイクルを繰り返す。
+スキルを1つ実行するたびに修正を挟み、**全スキルで指摘ゼロ**になるまでサイクルを繰り返す。
 
-**Announce at start:** "self-review を開始します。全スキルで指摘ゼロになるまでループします。"
+**Announce at start:** "self-review を開始します。スキルと修正を交互に回して全指摘ゼロを目指します。"
+
+---
 
 ## コンテキスト管理（最優先ルール）
 
-**コンテキスト使用率が 80% に達したら、次のアクションの前に必ず `/compact` を実行すること。**
+**各ステップの終わりに必ずコンテキスト使用率を確認し、80% 以上なら即 `/compact` する。**
 
-コンテキスト使用率の確認方法:
-- Claude Code のステータスバーに表示されるトークン使用率を参照
-- 各ラウンド開始前に確認し、80% 超えていれば即 `/compact`
-- compact 後もループは継続する（状態はこのスキルの指示に従って再構築）
+- compact 後もループは継続する
+- compact のタイミング: 修正・テスト・コミットの各ブロック完了後
 
-## 使用するスキル一覧
-
-| スキル | 適用条件 |
-|---|---|
-| **sora-review** | 常に適用（backend/frontend両方） |
-| **backend-coderabbit** | `backend/` 配下のファイルが変更に含まれる場合 |
-| **frontend-coderabbit** | `frontend/` 配下のファイルが変更に含まれる場合 |
-| **frontend-architecture** | `frontend/` 配下のファイルが変更に含まれる場合 |
+---
 
 ## セットアップ
 
-### 1. 変更ファイルの確認とスキルセットの決定
+### 変更ファイルの確認とスキルキューの決定
 
 ```bash
 git diff --name-only origin/dev...HEAD
 ```
 
-- `backend/` を含む → `sora-review` + `backend-coderabbit` を適用キューに追加
-- `frontend/` を含む → `sora-review` + `frontend-coderabbit` + `frontend-architecture` を適用キューに追加
-- 両方含む → 全4スキルを適用キューに追加
+| 変更ファイル | 実行するスキルキュー（順番通り） |
+|---|---|
+| `backend/` のみ | sora-review → backend-coderabbit |
+| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture |
+| 両方 | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
-
-### 2. ラウンド管理の初期化
-
-以下の状態を追跡する:
-- **ラウンド番号**: 1からスタート
-- **各スキルの最終結果**: `指摘あり` / `指摘なし`
-- **ループ継続条件**: いずれかのスキルに1件以上の指摘がある間はループ継続
 
 ---
 
 ## メインループ
 
-以下を「全スキルの指摘がゼロ」になるまで繰り返す。
-
-### ラウンド開始
+以下の **スキルキュー全体で指摘ゼロ** になるまでラウンドを繰り返す。
 
 ```
 === Self Review Round <N> ===
-対象スキル: [sora-review] [backend-coderabbit / frontend-coderabbit] [frontend-architecture]
 ```
 
-### Step 1: sora-review の適用
+ラウンド内の各スキルは **レビュー → 修正 → テスト → コミット → compact確認** のセットで順番に処理する。
+
+---
+
+### [STEP A] sora-review
+
+#### A-1. sora-review を適用
 
 sora-review スキルのロジックを適用してレビューを実施する。
 
-- カジュアル・直接的なスタイルで指摘を列挙
-- 指摘件数を記録: `sora-review: <N>件`
-- 指摘がない場合: `sora-review: ✅ 指摘なし`
-
-### Step 2: backend-coderabbit / frontend-coderabbit の適用
-
-変更ファイルのパスに応じて適用するスキルを選択:
-
-- `backend/` のみ → backend-coderabbit の11観点を適用
-- `frontend/` のみ → frontend-coderabbit の11観点を適用
-- 両方 → backend-coderabbit を backend/ ファイルに、frontend-coderabbit を frontend/ ファイルに適用
-
-各スキルの観点に従って指摘を列挙し、件数を記録する。
-
-### Step 3: frontend-architecture の適用（frontend/ がある場合のみ）
-
-frontend-architecture スキルのロジックを適用して CODING_STANDARDS.md の全ルールをチェックする。
-
-- 違反件数を記録: `frontend-architecture: <N>件`
-- 違反がない場合: `frontend-architecture: ✅ 指摘なし`
-
-### Step 4: ラウンド結果のサマリー表示
+- カジュアル・直接的なスタイルで指摘を列挙する
+- 指摘件数を記録する
 
 ```
-=== Round <N> Summary ===
-sora-review:           <N>件 / ✅ 指摘なし
-backend-coderabbit:    <N>件 / ✅ 指摘なし  （該当する場合）
-frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
-frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
-
-合計指摘: <N>件
+sora-review: <N>件
 ```
 
-**全スキルが指摘なしの場合 → ループ終了（Step 8へ）**
-**1件以上の指摘がある場合 → Step 5へ**
+指摘が0件なら `sora-review: ✅ 指摘なし` として **STEP B へ進む**（修正・コミットはスキップ）。
 
-### Step 5: 指摘の修正
+#### A-2. 修正
 
-全スキルの指摘を優先度順にまとめて修正を実施する。
-
-優先度:
+優先度順に修正を実施する:
 1. 🔴 Critical / 【必須修正】
 2. 🟠 Major / 【要改善】
 3. 🟡 Minor
 4. 🔵 Trivial / nits
 
-**重要:** 修正時はコードを読んでから変更すること。指摘内容を機械的に適用せず、コンテキストを理解した上で修正する。
+修正時はコードをRead toolで読んでから変更すること。指摘を機械的に適用しない。
 
-### Step 6: テストの実行（必須）
+#### A-3. テスト実行（必須）
 
 ```bash
 # Backend（変更がある場合）
@@ -129,42 +91,117 @@ pnpm -C frontend run test:e2e:playwright
 pnpm -C frontend run test:visual:docker
 ```
 
-**テストが失敗した場合はコミットせず、失敗を修正してから再実行すること。**
+テストが失敗した場合はコミットせず修正して再実行する。
 
-### Step 7: コミット
-
-テスト全通過後、修正内容をコミットする。
-
-- コミットメッセージは**何を修正したかが具体的にわかる**内容にする
-- 禁止: `fix: レビュー対応`、`fix: 指摘を反映` 等の抽象的表現
-- 複数テーマにまたがる場合はコミットを分割する
+#### A-4. コミット
 
 ```bash
 git add .
-git commit -m "fix: <具体的な修正内容>"
+git commit -m "fix: <sora-reviewの指摘に基づく具体的な修正内容>"
 ```
 
-**→ コンテキスト使用率を確認。80% 以上なら `/compact` してから次のラウンドへ。**
+禁止: `fix: sora-reviewの指摘を反映` / `fix: レビュー対応` 等の抽象的表現。
+複数テーマにまたがる場合はコミットを分割する。
 
-**→ Round <N+1> へ戻る**
+#### ↓ コンテキスト確認 → 80% 以上なら `/compact` → STEP B へ
 
 ---
 
-## ループ終了条件
+### [STEP B] backend-coderabbit / frontend-coderabbit
 
-全スキルのラウンド結果が全て「✅ 指摘なし」になったらループを終了する。
+#### B-1. coderabbit を適用
 
-### Step 8: 完了レポート
+変更ファイルのパスに応じてスキルを選択して適用する:
+
+- `backend/` のみ → backend-coderabbit の11観点を適用
+- `frontend/` のみ → frontend-coderabbit の11観点を適用
+- 両方 → backend-coderabbit を `backend/` ファイルに、frontend-coderabbit を `frontend/` ファイルに同時適用
+
+```
+backend-coderabbit:  <N>件
+frontend-coderabbit: <N>件
+```
+
+両方ゼロなら `✅ 指摘なし` として **STEP C へ進む**。
+
+#### B-2. 修正
+
+A-2 と同様に優先度順で修正する。
+
+#### B-3. テスト実行（必須）
+
+A-3 と同じコマンドで全テストを実行する。
+
+#### B-4. コミット
+
+```bash
+git add .
+git commit -m "fix: <coderabbitの指摘に基づく具体的な修正内容>"
+```
+
+#### ↓ コンテキスト確認 → 80% 以上なら `/compact` → STEP C へ
+
+---
+
+### [STEP C] frontend-architecture（frontend/ がある場合のみ）
+
+backend のみの場合はこの STEP をスキップして **ラウンドサマリーへ**。
+
+#### C-1. frontend-architecture を適用
+
+frontend-architecture スキルのロジックを適用して CODING_STANDARDS.md の全ルールをチェックする。
+
+```
+frontend-architecture: <N>件
+```
+
+0件なら `✅ 指摘なし` として修正・コミットをスキップ。
+
+#### C-2. 修正
+
+A-2 と同様に優先度順で修正する。
+
+#### C-3. テスト実行（必須）
+
+A-3 と同じコマンドで全テストを実行する。
+
+#### C-4. コミット
+
+```bash
+git add .
+git commit -m "fix: <frontend-architectureの指摘に基づく具体的な修正内容>"
+```
+
+#### ↓ コンテキスト確認 → 80% 以上なら `/compact` → ラウンドサマリーへ
+
+---
+
+### ラウンドサマリー
+
+```
+=== Round <N> Summary ===
+[STEP A] sora-review:           <N>件 / ✅ 指摘なし
+[STEP B] backend-coderabbit:    <N>件 / ✅ 指摘なし  （該当する場合）
+[STEP B] frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
+[STEP C] frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
+```
+
+**全ステップが ✅ 指摘なし → ループ終了（完了レポートへ）**
+**1件以上の指摘あり → Round <N+1> へ戻る**
+
+---
+
+## 完了レポート
 
 ```
 === Self Review Complete ===
 
 総ラウンド数: <N>
 最終状態:
-  sora-review:           ✅ 指摘なし
-  backend-coderabbit:    ✅ 指摘なし  （該当する場合）
-  frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
-  frontend-architecture: ✅ 指摘なし  （該当する場合）
+  [STEP A] sora-review:           ✅ 指摘なし
+  [STEP B] backend-coderabbit:    ✅ 指摘なし  （該当する場合）
+  [STEP B] frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
+  [STEP C] frontend-architecture: ✅ 指摘なし  （該当する場合）
 
 全スキルで指摘なしを確認しました。コードをプッシュしてください。
 ```
@@ -173,8 +210,9 @@ git commit -m "fix: <具体的な修正内容>"
 
 ## Red Flags - Never Do This
 
-- **コンテキスト80%を超えたまま `/compact` せずにループを継続しない**
+- **コンテキスト80%超えのまま `/compact` せずに次ステップへ進まない**
 - **テストが失敗したままコミットしない**
-- **指摘を確認せずに「指摘なし」と判定しない** — 各スキルのチェックリストを実際に適用すること
-- **「PRレビュー指摘を反映」等の抽象的なコミットメッセージを使わない**
-- **全スキルを回さずに途中でループを抜けない** — 1スキルでも指摘がある限りループを継続する
+- **スキルのチェックリストを実際に適用せずに「指摘なし」と判定しない**
+- **`fix: レビュー対応` 等の抽象的なコミットメッセージを使わない**
+- **STEP A → B → C の順番を変えない**
+- **1ステップでも指摘があればラウンドを最初から回し直す**
