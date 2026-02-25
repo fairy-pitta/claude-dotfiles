@@ -118,13 +118,11 @@ gh api graphql --paginate \
 
 ---
 
-## Step 3: ユーザー確認（全件まとめて承認を得る）
+## Step 3: コンテキスト永続化 → ユーザー確認 → Plan Mode
 
 > **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
-妥当・妥当でない両方の判断結果をまとめてユーザーに提示し、**一度に承認を得る。** Step 4で並列実行するため、ここで全ての承認を完了させる。
-
-### 3-1. 妥当でないコメント（スレッドに返信予定）
+### 3-1. 妥当でないコメントをユーザーに提示
 
 ```
 ## 妥当でないと判断したコメント（スレッドに返信予定）
@@ -135,50 +133,11 @@ gh api graphql --paginate \
 | 2 | `backend/app/...` | 88 | @coderabbitai | コメントの要約 | プロジェクトルール上意図的な設計。変更不要 |
 ```
 
-### 3-2. 妥当なコメント（修正計画）
+### 3-2. `.claude/pr-context.md` に全コンテキストを書き出す（Plan Mode の前・必須）
 
-> **Plan Mode は使わない。** Plan mode を使うとスキルフローが断絶し、Step 3.5 以降が実行されない。
-> 代わりに通常メッセージとして修正計画を提示し、`AskUserQuestion` で承認を得る。
+> **Plan Mode を抜けるとスキルフローが断絶する。** 断絶しても post-fix ワークフローを実行できるよう、Plan Mode に入る前に全情報をファイルに書き出す。
 
-修正計画を以下のフォーマットでユーザーに提示する:
-
-```
-## 修正計画
-
-**作業ブランチ:** `<branch-name>`（worktree: `.git-worktrees/<branch-name>`）
-
-| # | 優先度 | ファイル | 行 | 内容 | 修正方針 |
-|---|--------|---------|-----|------|---------|
-| 1 | 🔴 | `path/to/file.ts` | 42 | 指摘概要 | 具体的な修正方法 |
-| 2 | 🟠 | `backend/app/...` | 88 | 指摘概要 | 具体的な修正方法 |
-```
-
-優先度順に並べる:
-1. 🔴 Critical / セキュリティ・バグ
-2. 🟠 Major / アーキテクチャ・型安全性
-3. 🟡 Minor / リファクタ
-4. 🔵 Trivial / スタイル・Nitpick
-
-提示後、`AskUserQuestion` で承認を得る:
-```
-AskUserQuestion:
-  question: "上記の対応方針で進めてよいですか？"
-  options:
-    - label: "承認"
-      description: "この方針で修正・返信を実行する"
-    - label: "修正あり"
-      description: "方針を変更してから再提示する"
-```
-
-**承認を得てから Step 3.5 へ進む。承認前に一切コードを変更しない。**
-
----
-
-## Step 3.5: コンテキストの永続化（/clear 対策・必須）
-
-> **このステップを絶対にスキップしない。** `/clear` や `/compact` でコンテキストが消えても、Step 4 で必要な全情報をファイルから復元できるようにする。
-
-**ユーザー承認後、即座に** `.claude/pr-context.md` に以下の情報を書き出す:
+`.claude/pr-context.md` に以下を書き出す:
 
 ```markdown
 # PR Comment Resolution Context
@@ -212,72 +171,27 @@ AskUserQuestion:
 - **返信文案:** <PRスレッドに投稿する返信内容>
 
 ### 返信 2: ...
-```
 
-**重要:** `レビュー観点候補` フィールドは Track A-4 で使う。指摘内容を単にコピーするのではなく、**「なぜセルフレビューで見落としたか」「次回どうチェックすれば検出できるか」** を考えて書く。
+## Post-Fix ワークフロー（コード修正・コミット完了後に実行）
 
-書き出し後、ファイルの存在を確認:
-```bash
-cat .claude/pr-context.md | head -5
-```
+以下の作業を Task tool サブエージェントで実行すること。
+`.claude/pr-context.md` を Read tool で読み、必要な情報を取得してから作業する。
 
-**書き出し完了後、即座に Step 4 へ進む。** `/clear` は不要 — Step 4 は全作業を Task tool サブエージェントに委譲するため、親のコンテキスト逼迫を回避できる。
-
----
-
-## Step 4: Task tool で全作業を委譲（/clear 不要）
-
-> **重要:** このステップでは `/clear` しない。全作業をサブエージェントに委譲するため、親のコンテキストは消費しない。
-
-**以下の2トラックを Task tool で並列に実行する。** 1つのメッセージ内で2つの Task tool 呼び出しを同時に行うこと。
-
-各サブエージェントのプロンプトには `.claude/pr-context.md` の内容を**そのまま埋め込む**こと（サブエージェントはファイルの存在を知らないため）。
-
-### Track A: 修正実施 → テスト → コミット → スレッド返信 → レビュースキル反映
-
-Task tool に以下のプロンプトを渡す（`{...}` は pr-context.md から実際の値で埋める）:
-
-```
-以下のPRコメント修正を実施してください。
-
-## 作業環境
-- 作業ディレクトリ: {worktree-path}
-- PR: #{number} ({url})
-- Owner/Repo: {owner}/{repo}
-
-## 修正対象コメント
-{pr-context.mdの「妥当なコメント（修正対象）」セクション全体をここに貼る}
-
-## 作業手順（この順序で必ず全て実行すること）
-
-### 1. 修正を実施
-承認された修正計画に従い、優先度順に修正する。修正前に必ず対象ファイルを Read tool で読むこと。
-CLAUDE.md のコーディング規約・アーキテクチャルールに準拠すること。
-
-### 2. テスト実行（必須）
-Backend の変更がある場合: cd {worktree-path}/backend && pytest
-Frontend の変更がある場合:
-  pnpm -C {worktree-path}/frontend run type-check
-  pnpm -C {worktree-path}/frontend run lint
-  pnpm -C {worktree-path}/frontend run test:unit
-テストが失敗した場合はコミットせず修正してから再実行する。
-
-### 3. コミット＆プッシュ
-- コミットメッセージは日本語、conventional commits prefix（fix:/feat:/refactor: 等）
-- 禁止表現: 「レビュー対応」「コメント対応」「指摘を反映」等の抽象的表現
-- 複数テーマにまたがる場合はコミットを分割する
-- 変更内容を具体的に記述したコミットメッセージにすること
-- コミット後プッシュする
-
-### 4. 修正コミットハッシュをPRスレッドに返信（必須・漏れゼロ）
-プッシュ完了後、修正した各コメントの comment_id に対して以下を実行:
+### Task A: PRスレッドに修正コミットハッシュを返信
+修正した各コメントの comment_id に対して以下を実行:
   COMMIT_HASH=$(git rev-parse --short HEAD)
   gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
     --method POST \
     --field body="Fixed in ${COMMIT_HASH}"
 コミットを分割した場合は、各コメントに対応する正しいハッシュを使うこと。
 
-### 5. レビュースキルへの観点追加（最重要・スキップ禁止）
+### Task B: 妥当でないコメントへの返信
+各コメントの comment_id に対して、「返信文案」の内容でスレッドに返信:
+  gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
+    --method POST \
+    --field body="<返信文案の内容>"
+
+### Task C: レビュースキルへの観点追加（最重要・スキップ禁止）
 修正した内容はセルフレビューを潜り抜けてきた欠点。次回以降 self-review で検出されるよう、
 レビュースキルに観点を追記する。
 
@@ -286,60 +200,65 @@ Frontend の変更がある場合:
 - frontend/ 配下の修正 → ~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md
 
 追記フォーマット:
-  - **<観点名>** `[新観点 from PR#{number}]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
+  - **<観点名>** `[新観点 from PR#<number>]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
 
 各修正コメントの「レビュー観点候補」フィールドを参考にすること。
-既存のセクションに収まらない場合は、最も近いセクションの末尾に追記する。
+既存セクションに収まらない場合は、最も近いセクションの末尾に追記する。
 追記後:
-  cd ~/claude-dotfiles
-  git add skills/
-  git commit -m "feat: PR#{number}の指摘からbackend/frontend-coderabbitに観点を追加"
-  git push
-
-### 6. 結果報告
-以下のフォーマットで報告:
-  修正件数: N件
-  コミット: <hash>: <message>（複数あれば全て）
-  スレッド返信: N件（各comment_idとハッシュの対応）
-  レビュースキル更新: backend N件 / frontend N件
+  cd ~/claude-dotfiles && git add skills/ && git commit -m "feat: PR#<number>の指摘からレビュースキルに観点を追加" && git push
 ```
 
-### Track B: 妥当でないコメントへの返信
+**重要:** `レビュー観点候補` フィールドは post-fix ワークフローで使う。指摘内容を単にコピーするのではなく、**「なぜセルフレビューで見落としたか」「次回どうチェックすれば検出できるか」** を考えて書く。
 
-Task tool に以下のプロンプトを渡す:
+書き出し後、ファイルの存在を確認:
+```bash
+cat .claude/pr-context.md | head -5
+```
+
+### 3-3. Plan Mode で修正計画を提示
+
+pr-context.md の書き出しが完了してから Plan Mode に入る。
+
+**Plan の内容に以下の構成を含めること:**
 
 ```
-以下のPRコメントに「妥当でない」旨の返信を投稿してください。
+## 修正計画
 
-## 作業環境
-- Owner/Repo: {owner}/{repo}
+**作業ブランチ:** `<branch-name>`（worktree: `.git-worktrees/<branch-name>`）
 
-## 返信対象コメント
-{pr-context.mdの「妥当でないコメント（返信対象）」セクション全体をここに貼る}
+| # | 優先度 | ファイル | 行 | 内容 | 修正方針 |
+|---|--------|---------|-----|------|---------|
+| 1 | 🔴 | `path/to/file.ts` | 42 | 指摘概要 | 具体的な修正方法 |
+| 2 | 🟠 | `backend/app/...` | 88 | 指摘概要 | 具体的な修正方法 |
 
-## 作業手順
-各コメントの comment_id に対して、返信文案の内容でスレッドに返信する:
+## 検証
+- ruff check / type-check / pytest 等
 
-  gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
-    --method POST \
-    --field body="<返信文案の内容>"
+## Post-Fix ワークフロー（コード修正・テスト・コミット・プッシュ完了後に必ず実行）
 
-返信の書き方:
-- 丁寧かつ明確に、なぜ対応しないかを説明する
-- 該当するCLAUDE.mdのルールや実装の意図を示す
-- 相手の意図を否定せず、現状のコードが正しい理由を伝える
+`.claude/pr-context.md` を Read tool で読み、「Post-Fix ワークフロー」セクションに従って
+以下を Task tool サブエージェントで実行すること:
 
-## 結果報告
-以下のフォーマットで報告:
-  返信件数: N件
-  各返信: comment_id → 投稿OK/NG
+1. **Task A**: 修正した各コメントのPRスレッドに `Fixed in <commit-hash>` を返信
+2. **Task B**: 妥当でないコメントのPRスレッドに理由を返信
+3. **Task C**: レビュースキル（backend/frontend-coderabbit）に新しい観点を追記 → claude-dotfiles にコミット＆プッシュ
+
+**Task A+B と Task C は並列実行可能。**
 ```
+
+優先度順に並べる:
+1. 🔴 Critical / セキュリティ・バグ
+2. 🟠 Major / アーキテクチャ・型安全性
+3. 🟡 Minor / リファクタ
+4. 🔵 Trivial / スタイル・Nitpick
+
+**Plan mode を終了し、ユーザーの承認を得てから実装を開始する。承認前に一切コードを変更しない。**
 
 ---
 
-## Step 5: 完了レポート
+## Step 4: 完了レポート
 
-> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
+Plan の実装（コード修正 → テスト → コミット → Post-Fix ワークフロー）が全て完了したら、以下を報告:
 
 ```
 === Address PR Comments Complete ===
@@ -379,5 +298,5 @@ rm -f .claude/pr-context.md
 - **テストが失敗したままコミットしない**
 - **妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない** — Step 3 で必ず確認を取る
 - **解決済みコメントを自動で resolve しない** — resolve はレビュワーが行うもの
-- **Step 3.5 のコンテキスト永続化をスキップしない** — サブエージェントへの情報受け渡しに必須
-- **Step 4 で `/clear` しない** — 全作業は Task tool サブエージェントに委譲するため不要。`/clear` するとワークフローが中断する
+- **Plan Mode に入る前に pr-context.md を書き出さない** — Plan 実装時の post-fix ワークフローの情報源
+- **Plan の Post-Fix ワークフローをスキップしない** — コード修正だけで終わらず、スレッド返信とレビュースキル蓄積まで必ず実行する
