@@ -104,6 +104,7 @@ Domain層のRepositoryがDTOを返すと依存方向が逆転し、API変更がD
       raise error
   ```
 - **Enum必須** `[6回]` - ステータス値・カテゴリ値に文字列リテラル禁止。`TextChoices`/`IntegerChoices`を使用
+- **ドメインエンティティのEnum型引数の実行時型検証** `[新観点 from PR#465]` - `create()` 等のファクトリメソッドでEnum型パラメータを受け取る場合、`isinstance(x, SomeEnum)` の実行時チェックがあるか確認。型ヒントだけでは実行時に文字列等が通り抜けてバリデーションをすり抜ける。
 - **Serializer/Domainモデルフィールド不一致** - APIレスポンスのフィールド名がDomainエンティティと整合しているか。存在しないフィールドがSerializerに定義されていないか
 
 ### 3. Security & Authorization（セキュリティ・認可）
@@ -170,6 +171,7 @@ _⚠️ Potential issue_ | _🟠 Major_
   ).get(pk=user_id)
   ```
 - **Bulk操作** - 複数レコードの作成・更新時に`bulk_create()`/`bulk_update()`を使用しているか
+- **Admin list_displayでのN+1クエリ** `[新観点 from PR#465]` - `list_display` にカウントや集計を表示するメソッドがある場合、`get_queryset()` で `annotate(Count(...))` しているか確認。ループ内での `.count()` / `.all()` 呼び出しはN+1の原因になる。
 
 ### 6. Validation & Error Handling（バリデーション・エラーハンドリング）
 
@@ -219,6 +221,8 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **CSRFテスト有効化** `[新観点]` - `csrf_protect`を使うViewのテストは`APIClient(enforce_csrf_checks=True)`で実運用と同条件にすること。CSRFを無効にするとテストが偽陽性になる
 - **正常系カバレッジ** - 異常系テストのみで正常系が抜けていないか
 - **テストデータの独立性** - テスト間で共有される可変なdict・listがないか。テスト汚染を防ぐ
+- **テストはクラスベース禁止・関数ベース必須** `[新観点 from PR#465]` - 新規テストファイルでクラスを使っていないか確認。`class TestXxx:` の形式は禁止。すべて `def test_xxx():` のモジュールレベル関数で記述すること。
+- **テスト名は英語必須** `[新観点 from PR#465]` - テスト関数名に日本語を使っていないか確認。`test_<subject>__<condition>__<expected>` 形式の英語名を使うこと。
 
 ```
 _⚠️ Potential issue_ | _🟠 Major_
