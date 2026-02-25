@@ -156,7 +156,57 @@ gh api graphql --paginate \
 3. 🟡 Minor / リファクタ
 4. 🔵 Trivial / スタイル・Nitpick
 
-**Plan modeを終了し、ユーザーの承認を得てからStep 4へ進む。承認前に一切コードを変更しない。**
+**Plan modeを終了し、ユーザーの承認を得てからStep 3.5へ進む。承認前に一切コードを変更しない。**
+
+---
+
+## Step 3.5: コンテキストの永続化（/clear 対策・必須）
+
+> **このステップを絶対にスキップしない。** `/clear` や `/compact` でコンテキストが消えても、Step 4 で必要な全情報をファイルから復元できるようにする。
+
+**ユーザー承認後、即座に** `.claude/pr-context.md` に以下の情報を書き出す:
+
+```markdown
+# PR Comment Resolution Context
+
+## メタ情報
+- PR: #<number> (<url>)
+- Owner/Repo: <owner>/<repo>
+- ブランチ: <branch-name>
+- Worktree: <worktree-path>
+
+## 妥当なコメント（修正対象）
+
+### 修正 1: <ファイルパス>:<行番号>
+- **投稿者:** @<author>
+- **コメント概要:** <概要>
+- **修正方針:** <具体的な修正方法>
+- **優先度:** 🔴/🟠/🟡/🔵
+- **レビュー観点候補:** <この指摘から得られるレビュー観点。セルフレビューで検出できなかった理由と、次回検出するためのチェックポイント>
+- **対象スキル:** backend-coderabbit / frontend-coderabbit
+
+### 修正 2: ...
+
+## 妥当でないコメント（返信対象）
+
+### 返信 1: <ファイルパス>:<行番号>
+- **投稿者:** @<author>
+- **comment_id:** <comment_id>
+- **コメント概要:** <概要>
+- **妥当でない理由:** <理由>
+- **返信文案:** <PRスレッドに投稿する返信内容>
+
+### 返信 2: ...
+```
+
+**重要:** `レビュー観点候補` フィールドは Track A-4 で使う。指摘内容を単にコピーするのではなく、**「なぜセルフレビューで見落としたか」「次回どうチェックすれば検出できるか」** を考えて書く。
+
+書き出し後、ファイルの存在を確認:
+```bash
+cat .claude/pr-context.md | head -5
+```
+
+**このステップ完了後に `/clear` してよい。** Step 4 はこのファイルから文脈を復元する。
 
 ---
 
@@ -164,7 +214,18 @@ gh api graphql --paginate \
 
 > **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
-**ユーザー承認後、以下の2トラックをTask toolで並列に実行する。** 1つのメッセージ内で2つのTask tool呼び出しを同時に行うこと。
+### 4-0. コンテキストの復元（必須）
+
+**まず `.claude/pr-context.md` を Read tool で読み込む。** `/clear` 後はこのファイルが唯一の情報源。
+ファイルが存在しない場合は、Step 3.5 がスキップされている。ユーザーに報告し、Step 1 からやり直す。
+
+```
+Read: .claude/pr-context.md
+```
+
+読み込んだ内容を基に、Track A / Track B に必要な情報を Task tool のプロンプトに含めること。
+
+**以下の2トラックをTask toolで並列に実行する。** 1つのメッセージ内で2つのTask tool呼び出しを同時に行うこと。
 
 ### Track A: 修正実施 → テスト → コミット → レビュースキル反映
 
@@ -277,6 +338,12 @@ gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
   - <hash>: feat: PR#<N>の指摘からレビュースキルに観点を追加
 ```
 
+### クリーンアップ
+
+```bash
+rm -f .claude/pr-context.md
+```
+
 ---
 
 ## Red Flags - Never Do This
@@ -287,3 +354,4 @@ gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
 - **テストが失敗したままコミットしない**
 - **妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない** — Step 3 で必ず確認を取る
 - **解決済みコメントを自動で resolve しない** — resolve はレビュワーが行うもの
+- **Step 3.5 のコンテキスト永続化をスキップしない** — `/clear` 後に文脈が消えてレビュースキル蓄積が不完全になる
