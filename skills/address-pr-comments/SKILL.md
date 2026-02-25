@@ -11,11 +11,13 @@ PRの未解決レビューコメントを全件取得し、**妥当性を判断�
 
 **Announce at start:** "address-pr-comments を開始します。未解決コメントの妥当性を確認して全件対応します。"
 
-**コンテキスト管理（全ステップ共通）:** 各ステップの開始前にコンテキスト使用率を確認し、**80%を超えていたら `/compact` を実行してからステップを継続すること。**
+**コンテキスト管理（全ステップ共通・必須）:** **各ステップの開始前**にコンテキスト使用率を確認し、**80%を超えていたら `/compact` を実行してからステップを継続すること。** 例外なく全ステップで適用する。
 
 ---
 
 ## Step 0: Worktreeの作成と移動
+
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
 ```bash
 # 現在のブランチ名を取得（引数がなければ現在ブランチ）
@@ -32,6 +34,8 @@ pwd  # 作業ディレクトリを確認
 ---
 
 ## Step 1: 未解決コメントを全件取得
+
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
 ```bash
 gh pr view --json number,title,reviewThreads --jq '
@@ -52,6 +56,8 @@ gh pr view --json number,title,reviewThreads --jq '
 ---
 
 ## Step 2: 各コメントの妥当性を判断
+
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
 コメントごとに以下を実施する:
 
@@ -76,33 +82,122 @@ gh pr view --json number,title,reviewThreads --jq '
 
 ---
 
-## Step 3: 妥当でないコメントをユーザーに提示
+## Step 3: ユーザー確認（全件まとめて承認を得る）
 
 > **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
-妥当でないと判断したコメントを表にまとめてユーザーに見せる。
+妥当・妥当でない両方の判断結果をまとめてユーザーに提示し、**一度に承認を得る。** Step 4で並列実行するため、ここで全ての承認を完了させる。
+
+### 3-1. 妥当でないコメント（スレッドに返信予定）
 
 ```
-## 妥当でないと判断したコメント（CodeRabbitスレッドに返信予定）
+## 妥当でないと判断したコメント（スレッドに返信予定）
 
 | # | ファイル | 行 | 投稿者 | コメント概要 | 妥当でない理由 |
 |---|---------|-----|--------|------------|--------------|
 | 1 | `path/to/file.ts` | 42 | @coderabbitai | コメントの要約 | すでに正しく実装済み。CLAUDE.md X.Y節に準拠している |
 | 2 | `backend/app/...` | 88 | @coderabbitai | コメントの要約 | プロジェクトルール上意図的な設計。変更不要 |
-
-上記の各コメントスレッドに返信します。よろしいですか？
 ```
 
-**ユーザーの確認を待つ。** 承認されたら Step 4 へ進む。
+### 3-2. 妥当なコメント（修正計画）
+
+**Plan Modeに入り、修正計画を提示する。** 作業ブランチを冒頭に明記すること。
+
+```
+## 修正計画
+
+**作業ブランチ:** `<branch-name>`（worktree: `.git-worktrees/<branch-name>`）
+
+| # | ファイル | 行 | 内容 | 修正方針 |
+|---|---------|-----|------|---------|
+| 1 | `path/to/file.ts` | 42 | 指摘概要 | 具体的な修正方法 |
+| 2 | `backend/app/...` | 88 | 指摘概要 | 具体的な修正方法 |
+```
+
+優先度順に並べる:
+1. 🔴 Critical / セキュリティ・バグ
+2. 🟠 Major / アーキテクチャ・型安全性
+3. 🟡 Minor / リファクタ
+4. 🔵 Trivial / スタイル・Nitpick
+
+**Plan modeを終了し、ユーザーの承認を得てからStep 4へ進む。承認前に一切コードを変更しない。**
 
 ---
 
-## Step 4: 妥当でないコメントをCodeRabbitスレッドに返信
+## Step 4: 並列実行（Task toolで同時進行）
 
 > **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
-ユーザーの確認後、各コメントの **CodeRabbitスレッドに直接返信** を投稿する。
-`in_reply_to` に CodeRabbit のコメント ID を指定してスレッドに返信すること。
+**ユーザー承認後、以下の2トラックをTask toolで並列に実行する。** 1つのメッセージ内で2つのTask tool呼び出しを同時に行うこと。
+
+### Track A: 修正実施 → テスト → コミット → レビュースキル反映
+
+Task toolで以下を1つのエージェントに委譲する:
+
+#### A-1. 修正を実施
+
+承認された修正計画に従い、優先度順に修正する。修正前に必ず対象ファイルを Read tool で読むこと。
+
+#### A-2. テスト実行（必須）
+
+```bash
+# Backend（変更がある場合）
+cd backend && pytest
+
+# Frontend（変更がある場合）
+pnpm -C frontend run type-check
+pnpm -C frontend run lint
+pnpm -C frontend run test:unit
+
+# e2e / VRT（存在する場合）
+pnpm -C frontend run test:e2e:playwright
+pnpm -C frontend run test:visual:docker
+```
+
+テストが失敗した場合はコミットせず修正してから再実行する。
+
+#### A-3. コミット＆プッシュ
+
+**`/commit-push` スキルを使用すること。**
+
+**禁止表現:** `fix: レビュー対応` / `fix: コメント対応` / `fix: 指摘を反映` 等の抽象的表現。
+複数テーマにまたがる場合はコミットを分割する（分割した分だけ `/commit-push` を実行する）。
+
+#### A-4. レビュースキルへの観点追加（最重要）
+
+**このPRで修正した内容は、セルフレビューを潜り抜けてきた欠点。次回以降は `self-review` で自動検出されるよう、対応するレビュースキルに観点として追記する。**
+
+修正したコメントをファイルパスで分類:
+- `backend/` 配下の修正 → `~/claude-dotfiles/skills/backend-coderabbit/SKILL.md` に追記
+- `frontend/` 配下の修正 → `~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` に追記
+
+**追記フォーマット:**
+```
+- **<観点名>** `[新観点 from PR#<PR番号>]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
+```
+
+**例:**
+```
+- **useEffectの依存配列の漏れ** `[新観点 from PR#466]` - `useEffect`の依存配列に使用している変数が全て含まれているか。
+  漏れがあると古い値を参照したまま動作するバグになる。ESLintの`exhaustive-deps`ルールで検出可能。
+```
+
+既存のセクションに収まらない場合は、最も近いセクションの末尾に追記する。
+
+```bash
+cd ~/claude-dotfiles
+```
+
+**`/commit-push` スキルを使用すること。**
+
+コミットメッセージ例: `feat: PR#<PR番号>の指摘からbackend/frontend-coderabbitに観点を追加`
+
+### Track B: 妥当でないコメントへの返信
+
+Task toolで以下を1つのエージェントに委譲する:
+
+各コメントの **スレッドに直接返信** を投稿する。
+`in_reply_to` にコメントIDを指定してスレッドに返信すること。
 
 ```bash
 # CodeRabbitコメントスレッドへの返信（in_reply_to 必須）
@@ -125,134 +220,9 @@ gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
 
 ---
 
-## Step 5: 妥当なコメントをplan modeで修正
+## Step 5: 完了レポート
 
 > **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
-
-妥当と判断したコメントを修正する。
-
-### 5-1. **Plan Modeに入る（必須）**
-
-**必ず EnterPlanMode（plan mode）を使用すること。** 修正を始める前に plan mode に入り、実装計画をユーザーに提示してから承認を得ること。
-
-妥当なコメントを全て列挙し、修正方針を立てる。**作業ブランチを計画の冒頭に必ず明記すること。**
-
-```
-## 修正計画
-
-**作業ブランチ:** `<branch-name>`（worktree: `.git-worktrees/<branch-name>`）
-
-| # | ファイル | 行 | 内容 | 修正方針 |
-|---|---------|-----|------|---------|
-| 1 | `path/to/file.ts` | 42 | 指摘概要 | 具体的な修正方法 |
-| 2 | `backend/app/...` | 88 | 指摘概要 | 具体的な修正方法 |
-```
-
-優先度順に並べる:
-1. 🔴 Critical / セキュリティ・バグ
-2. 🟠 Major / アーキテクチャ・型安全性
-3. 🟡 Minor / リファクタ
-4. 🔵 Trivial / スタイル・Nitpick
-
-**Plan modeを終了し、ユーザーの承認を得てから実装に入ること。承認前に一切コードを変更しない。**
-
-### 5-2. 修正を実施する
-
-優先度順に修正する。修正前に必ず対象ファイルを Read tool で読むこと。
-
-### 5-3. テスト実行（必須）
-
-```bash
-# Backend（変更がある場合）
-cd backend && pytest
-
-# Frontend（変更がある場合）
-pnpm -C frontend run type-check
-pnpm -C frontend run lint
-pnpm -C frontend run test:unit
-
-# e2e / VRT（存在する場合）
-pnpm -C frontend run test:e2e:playwright
-pnpm -C frontend run test:visual:docker
-```
-
-テストが失敗した場合はコミットせず修正してから再実行する。
-
-### 5-4. コミット＆プッシュ
-
-**`/commit-push` スキルを使用すること。**
-
-```
-/commit-push
-```
-
-**禁止表現:** `fix: レビュー対応` / `fix: コメント対応` / `fix: 指摘を反映` 等の抽象的表現。
-複数テーマにまたがる場合はコミットを分割する（分割した分だけ `/commit-push` を実行する）。
-
----
-
-## Step 6: 完了処理
-
-> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
-
-### 6-1. 修正済みコメントのスレッドを解決
-
-```bash
-gh api graphql -f query='
-  mutation($threadId: ID!) {
-    resolveReviewThread(input: {threadId: $threadId}) {
-      thread { id isResolved }
-    }
-  }
-' -f threadId="<THREAD_ID>"
-```
-
----
-
-## Step 7: レビュースキルへの観点追加（最重要）
-
-**このPRで修正した内容は、セルフレビューを潜り抜けてきた欠点。次回以降は `self-review` で自動検出されるよう、対応するレビュースキルに観点として追記する。**
-
-### 7-1. 各修正をbackend/frontendに分類
-
-修正したコメントをファイルパスで分類:
-- `backend/` 配下の修正 → `backend-coderabbit` に追記
-- `frontend/` 配下の修正 → `frontend-coderabbit` に追記
-
-### 7-2. 観点を追記する
-
-`~/claude-dotfiles/skills/backend-coderabbit/SKILL.md` または `~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` の最も関連するセクションに、新しいチェック項目として追記する。
-
-**追記フォーマット:**
-```
-- **<観点名>** `[新観点 from PR#<PR番号>]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
-```
-
-**例:**
-```
-- **useEffectの依存配列の漏れ** `[新観点 from PR#466]` - `useEffect`の依存配列に使用している変数が全て含まれているか。
-  漏れがあると古い値を参照したまま動作するバグになる。ESLintの`exhaustive-deps`ルールで検出可能。
-```
-
-既存のセクションに収まらない場合は、最も近いセクションの末尾に追記する。
-
-### 7-3. claude-dotfilesにコミット＆プッシュ
-
-```bash
-cd ~/claude-dotfiles
-```
-
-**`/commit-push` スキルを使用すること。**
-
-```
-/commit-push
-```
-
-コミットメッセージ例: `feat: PR#<PR番号>の指摘からbackend/frontend-coderabbitに観点を追加`
-
----
-
-## Step 8: 完了レポート
 
 ```
 === Address PR Comments Complete ===
@@ -280,3 +250,4 @@ cd ~/claude-dotfiles
 - **「PRレビュー対応」等の抽象的なコミットメッセージを使わない**
 - **テストが失敗したままコミットしない**
 - **妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない** — Step 3 で必ず確認を取る
+- **解決済みコメントを自動で resolve しない** — resolve はレビュワーが行うもの
