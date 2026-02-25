@@ -37,21 +37,57 @@ pwd  # 作業ディレクトリを確認
 
 > **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
 
+`gh pr view --json reviewThreads` はデフォルトで**最初の20件しか返さない**。GraphQL + `--paginate` で全件取得すること。
+
 ```bash
-gh pr view --json number,title,reviewThreads --jq '
-  .reviewThreads[]
-  | select(.isResolved == false)
-  | {
-      id: .id,
-      path: .path,
-      line: .line,
-      author: .comments[0].author.login,
-      body: .comments[0].body
+# PR番号とリポジトリ情報を取得
+PR_NUMBER=$(gh pr view --json number --jq '.number')
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+
+# GraphQLページネーションで全スレッドを取得（100件/ページ × 複数ページ）
+gh api graphql --paginate \
+  -f owner="$OWNER" \
+  -f repo="$REPO" \
+  -F number="$PR_NUMBER" \
+  -f query='
+    query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          reviewThreads(first: 100, after: $endCursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              id
+              isResolved
+              path
+              line
+              comments(first: 1) {
+                nodes {
+                  databaseId
+                  author { login }
+                  body
+                }
+              }
+            }
+          }
+        }
+      }
     }
-'
+  ' | jq -s '
+    [.[].data.repository.pullRequest.reviewThreads.nodes[]]
+    | map(select(.isResolved == false))
+    | map({
+        id: .id,
+        path: .path,
+        line: .line,
+        author: .comments.nodes[0].author.login,
+        body: .comments.nodes[0].body,
+        comment_id: (.comments.nodes[0].databaseId | tostring)
+      })
+  '
 ```
 
-未解決コメントが0件なら「未解決コメントはありません」と報告して終了。
+取得後、**総件数を必ず確認**して報告する。未解決コメントが0件なら「未解決コメントはありません」と報告して終了。
 
 ---
 
