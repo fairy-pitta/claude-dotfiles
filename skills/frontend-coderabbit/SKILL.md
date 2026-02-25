@@ -11,6 +11,8 @@ Vue 3 + TypeScript + FSD (Feature-Sliced Design)のフロントエンドコー�
 
 **Data source:** 394 frontend inline comments from 33 PRs (recent 40 PRs analyzed)
 
+**コード例示:** `references/code-examples.md` を参照
+
 ## Language
 
 **日本語で回答すること。**タイトルに【必須修正】【要改善】【任意】等のラベルを使用する。
@@ -55,257 +57,6 @@ _<category>_ | _<severity>_
 
 ---
 
-## Review Focus Areas
-
-### 1. FSD Architecture Compliance（FSDアーキテクチャ準拠）`[最多頻出: FSD 21回, import 15回, スライス 9回]`
-
-依存方向: `app → pages → features → entities → shared`（上位→下位のみ）
-
-**1-1. index.ts（公開API）経由のimport必須** `[最多指摘項目]`
-
-外部スライスの内部モジュールへの直接importは絶対NG。必ず各スライスの`index.ts`（公開API）経由でimportすること。
-
-```typescript
-// ❌ Bad: スライス内部モジュールへの直接import
-import { CompanyApi } from '@entities/company/api/companyApi'
-import { useLoginMutation } from '@features/auth/login/model/loginMutations'
-import { validateAmount } from '@features/journal/lib/validators'
-
-// ✅ Good: index.ts経由のimport
-import { CompanyApi } from '@entities/company'
-import { useLoginMutation } from '@features/auth'
-import { validateAmount } from '@features/journal'
-```
-
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【必須修正】FSDの公開API（index.ts）経由のimportに戻してください**
-
-`@features/file-import/lib/validators`への直接importはFSD規約違反です。
-`@features/file-import`（index.ts）経由でアクセスしてください。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-- import { validateFileSize } from '@features/file-import/lib/validators'
-+ import { validateFileSize } from '@features/file-import'
-```
-</details>
-```
-
-**1-2. pages層からのfeatures内部参照禁止**
-
-`pages/`層は`features/`の`index.ts`のみを参照できる。`features/{slice}/model/`, `features/{slice}/lib/`等への直接参照はNG。
-
-**1-3. features間の直接import禁止** `[アーキテクチャ根幹]`
-
-features間の直接import（型importも含む）は禁止。共有したい型・ロジックは`entities/`または`shared/`に昇格させること。
-
-**1-4. entities間の`@x`パターン** - entities間は`import type`のみ許可。ランタイムimportは禁止。
-
-**1-5. FSDエイリアス必須** - 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用
-
-**1-6. 3+スライスから使用される機能の昇格** - 3スライス以上から参照されるコードは上位層に昇格必須
-
-**1-7. Composables→Repository IFを介さず実装に直結はNG** `[新観点]`
-
-ComposablesがhttpClient等に直結すると、FSDの`Composables → Repository IF`の依存方向に反する。
-
-```typescript
-// ❌ Bad: httpClient直結
-import { httpClient } from '@shared/api'
-export function useUploadJournal() {
-  return useMutation({ mutationFn: (data) => httpClient.post('/journal', data) })
-}
-
-// ✅ Good: Repository IF経由
-import type { JournalUploadRepository } from '@entities/journal'
-export function useUploadJournal(repo: JournalUploadRepository) {
-  return useMutation({ mutationFn: (data) => repo.upload(data) })
-}
-```
-
-### 2. Type Safety（型安全性）`[型: 40回 - 最多頻出キーワード]`
-
-- **`any`型禁止** `[10回]` - `any`は禁止。`unknown`/`never`/ジェネリクス/型ガードで代替
-- **`enum`禁止** - TypeScriptの`enum`は禁止。constオブジェクト + `as const` + `typeof`で代替
-  ```typescript
-  // ❌ Bad
-  enum Status { Active = 'active', Inactive = 'inactive' }
-
-  // ✅ Good
-  const Status = { Active: 'active', Inactive: 'inactive' } as const
-  type Status = typeof Status[keyof typeof Status]
-  ```
-- **`console.*`禁止** - `console.log/warn/error`等は禁止。エラーは4層パイプライン経由
-- **`<script setup lang="ts">`必須** - `<script setup>`の`lang="ts"`省略禁止
-- **型アサーション`as`の使用** - `as`による強制キャストが型安全でないケースに注意。型ガードで代替推奨
-- **Floating Point Number** - 金額に浮動小数点演算を直接使わない。`Amount`型（branded integer）経由
-
-### 3. TanStack Vue Query（サーバー状態管理）
-
-- **QueryKey Factoryパターン** `[Query: 5回]` - QueryKeyは必ずFactoryパターンで定義。マスターデータは`['master', ...]` prefix必須
-  ```typescript
-  // ✅ Good: QueryKey Factory
-  export const companyKeys = {
-    all: ['companies'] as const,
-    list: (filters: CompanyFilter) => [...companyKeys.all, 'list', filters] as const,
-    detail: (id: number) => [...companyKeys.all, 'detail', id] as const,
-  }
-  ```
-- **QueryKeyに`undefined`を渡さない** - `undefined`を含むQueryKeyはキャッシュ汚染の原因。デフォルト値を設定
-- **Pinia非推奨（サーバー状態の二重管理禁止）** `[3回]` - サーバー状態をPiniaとTanStack Queryの両方で管理しない。サーバー状態はTanStack Queryに集約
-- **楽観的更新禁止（仕訳Mutation）** - 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
-- **Mutation後のinvalidateQueries** - Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
-
-### 4. State Management（クライアント状態管理）
-
-- **composable singletonのreadonly保護** `[readonly: 3回]` - module-levelのrefをそのまま公開しない。`readonly()`でラップして外部から直接書き込まれないようにする
-  ```typescript
-  // ❌ Bad: 生refを公開
-  const selectedMonth = ref<string | null>(null)
-  export function useSelectedMonth() {
-    return { selectedMonth }
-  }
-
-  // ✅ Good: readonlyで保護
-  const _selectedMonth = ref<string | null>(null)
-  export function useSelectedMonth() {
-    return {
-      selectedMonth: readonly(_selectedMonth),
-      setSelectedMonth: (v: string) => { _selectedMonth.value = v }
-    }
-  }
-  ```
-- **`computed`の使用** - テンプレート内の複雑な条件式は`computed`に切り出す
-
-### 5. Error Handling（エラーハンドリング）`[エラー: 25回]`
-
-- **エラーメッセージ直書き禁止** - エラーメッセージを文字列リテラルで直書きせず、カタログ定数経由
-  ```typescript
-  // ❌ Bad
-  throw new Error('ファイルサイズが上限を超えています')
-
-  // ✅ Good
-  throw new AppError(ERROR_CATALOG.FILE.SIZE_EXCEEDED)
-  ```
-- **4層エラーパイプライン** - `shared → entities → features → pages`の順でエラーを処理。各層のエラーは適切な型に変換して上位に伝播
-- **try-catch漏れ** - 非同期処理に適切なエラーハンドリングがあるか。エラーがサイレントに握りつぶされていないか
-- **非対称なdisabled状態** `[新観点 from PR#455]` - 同一フローで複数のボタン（例: period/overlap の各view）がある場合、`isUploading` 等のローディングガードが全ボタンに対称に付いているか。一方のviewにはあって他方にはない非対称な状態になっていないか。
-- **ユーザー向けエラーメッセージ** - エラー時にユーザーへの通知（toast等）が適切に行われているか
-
-### 6. Vue.js Patterns（Vueパターン）
-
-- **`v-for`の`:key`安定性** - `v-for`の`:key`にarray indexを使用していないか。`id`等の安定した識別子を使用
-  ```html
-  <!-- ❌ Bad -->
-  <tr v-for="(item, index) in items" :key="index">
-
-  <!-- ✅ Good -->
-  <tr v-for="item in items" :key="item.id">
-  ```
-- **非同期レースコンディション** - Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスで状態が上書きされないか。requestIdガードパターンで対策
-  ```typescript
-  const latestRequestId = ref(0)
-  async function fetchDetails(params: Params) {
-    const requestId = ++latestRequestId.value
-    try {
-      const response = await api.getData(params)
-      if (requestId !== latestRequestId.value) return  // 古いリクエストは無視
-      data.value = response.data
-    } catch (e) {
-      if (requestId !== latestRequestId.value) return
-      error.value = e
-    }
-  }
-  ```
-- **Floating Promises** - `async`関数を`await`も`void`もなしに呼び出していないか。意図的なfire-and-forgetは`void`を明示
-- **UIガードとビジネスロジックガードの一致** - UIレベルのガード（`isClickable` computed等）だけでなく、イベントハンドラのビジネスロジック層でも同じ制約を担保しているか
-- **暗黙のtruthyチェック** - `if (value)`による暗黙チェックで`null`・`undefined`・空文字が意図通りに処理されるか。型に応じて`value != null`等の明示的チェックを推奨
-
-### 7. Test Quality（テスト品質）`[テスト: 18回]`
-
-- **MSW使用** - APIモックはMSWを使用しているか。`vi.fn()`の直接モック乱用は避ける
-- **Vitestスタイル** - `describe/it/expect`の構成が適切か
-- **FormDataを使うmutationテスト** - `FormData`を使うMutationのテストでAxiosアダプターをNode.js httpに設定しているか（`axios.defaults.adapter = 'http'`）
-- **型安全なモック** - モック関数に適切な型が付いているか
-- **テストケースの網羅性** - ローディング状態・エラー状態・成功状態のそれぞれをカバーしているか
-- **テストデータの独立性** - テスト間で共有される可変なオブジェクトがないか
-
-```
-_⚠️ Potential issue_ | _🟠 Major_
-
-**【要改善】FormDataを使うmutationテストでAxiosアダプターの設定が必要です**
-
-Node.js環境でFormDataを使うAxiosリクエストをテストする場合、
-`axios.defaults.adapter = 'http'`の設定が必要です。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-+ import axios from 'axios'
-+ axios.defaults.adapter = 'http'  // Node.js httpアダプターを使用
-
-  it('ファイルアップロードが成功する', async () => {
-```
-</details>
-```
-
-### 8. Security（セキュリティ）
-
-- **XSS対策** - `v-html`の使用時にサニタイズされているか。ユーザー入力を直接DOMに渡していないか
-- **依存ライブラリの脆弱性** - 既知の脆弱性を持つライブラリ（例: `xlsx`）を使用していないか。`exceljs`等の安全な代替への移行を推奨
-- **機密情報のログ出力** - `console.*`等でAPIキー・トークン・パスワードを出力していないか
-
-### 9. Unused Code Detection（未使用コード）
-
-- 呼び出されていないcomposable・関数・コンポーネント
-- 未使用のimport（特にFSD違反のimportを削除した後の残骸）
-- 参照されていない型定義・定数
-- `barrel-only`なindex.tsから直接パスに変更された後の未参照エクスポート
-
-```
-_🧹 Nitpick_ | _🟡 Minor_
-
-**【要改善】未使用の`generateMonthKey`を削除してください**
-
-`generateMonthKey`はコードベース内のどこからも呼び出されていません。
-内部で使用している`isValidAccountingMonth`も連鎖的に未使用になります。
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-- export function generateMonthKey(fiscalYear: number, month: number): string { ... }
-- function isValidAccountingMonth(month: number): boolean { ... }
-```
-</details>
-```
-
-### 10. Code Organization & DRY
-
-- **DRY原則** - 同一・類似のロジックが複数コンポーネント/composableに存在しないか
-- **コンポーネント分割** - 1コンポーネントが複数の責務を持ちすぎていないか
-- **`@pages/`エイリアスの使用** - pages層内では`@pages/`エイリアスを使用（相対パスは規約違反）
-- **ルーター設定** - v2プレフィックス付きルート名など、ルート名の命名一貫性
-- **マジックストリング** `[新観点 from PR#455]` - 複数ファイルで使われる文字列リテラル（例: `"transitive"`）をマジックストリングのまま使い回していないか。共有定数ファイル（`types.ts` 等）に `const DISPLAY_TYPES = { TRANSITIVE: "transitive" } as const` のように定義して import して使う。
-- **ゲッター関数の二重呼び出し** `[新観点 from PR#455]` - `computed` 内で `() => ...` 形式のゲッター関数を複数回呼び出していないか（例: `accountTitleIndex() !== null` の後で `accountTitleIndex() % 2` のように再呼び出し）。一度ローカル変数に格納してから使用する。
-- **computed 内クロージャ生成** `[新観点 from PR#455]` - `computed` スコープ内で関数オブジェクトを定義している場合（例: `const getLabel = (v) => ...`）、computed の再評価のたびに関数が再生成される。`computed` 外（composable 本体スコープ）に抽出することで再生成を避けられる。
-- **状態リセットの対称性** `[新観点 from PR#455]` - ファイル削除時はリセットしているが新ファイル選択時はリセットしていない等、状態の初期化処理が一部パスにしか存在しない非対称な実装になっていないか。ファイル変更・差替・削除等の全パスで関連状態が適切にリセットされているか確認する。
-- **イベントハンドラの不要な再代入** `[新観点 from PR#455]` - ドラッグ/スクロール等の高頻度イベントハンドラで、状態が変化しない場合も毎回代入が走っていないか。終端値（前回の値）を追跡する変数を追加し、変わっていない場合は早期リターンで再代入をスキップする。
-
-### 11. Syntax & Basic Quality（構文・基本品質）
-
-- **TypeScript構文エラー** - 型エラー・未解決の型不一致
-- **マージコンフリクトマーカー** - `<<<<<<<`が残っていないか
-- **`<script setup lang="ts">`の省略** - `lang="ts"`の省略は禁止
-- **SFCの構造** - `<template>` → `<script setup lang="ts">` → `<style scoped>`の順
-
----
-
 ## Review Process
 
 ### 1. Get Changed Files
@@ -314,22 +65,17 @@ _🧹 Nitpick_ | _🟡 Minor_
 git diff --name-only origin/dev...HEAD | grep "^frontend/"
 ```
 
-### 2. Analyze Each File
+### 2. Core チェック（全PRで必ず実施）
 
-各frontendファイルに対して以下を確認:
-1. FSD Architecture Compliance（index.ts経由, 依存方向, features間import, ComposablesとRepository IFの関係）
-2. Type Safety（any禁止, enum禁止, console禁止, branded型）
-3. TanStack Vue Query（QueryKey Factory, Pinia非推奨, 楽観更新）
-4. State Management（readonly保護, composable singleton）
-5. Error Handling（カタログ定数, 4層パイプライン）
-6. Vue.js Patterns（v-for key, レースコンディション, Floating Promise）
-7. Test Quality（MSW, FormData axios adapter, 型安全モック）
-8. Security（XSS, 脆弱ライブラリ）
-9. Unused Code Detection
-10. Code Organization & DRY
-11. Syntax & Basic Quality
+変更ファイルを読んだ後、**Core Checklist** の全項目をチェックする。
+見落としゼロを優先。ファイル数が多い場合でもCore観点は省略しない。
 
-### 3. Generate Summary
+### 3. Extended チェック（変更内容に応じて実施）
+
+変更内容がテスト・クエリ管理・セキュリティ等に関係する場合、
+**Extended Checklist** の対応セクションをチェックする。
+
+### 4. Generate Summary
 
 ```markdown
 ## Review Summary
@@ -359,15 +105,123 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 
 ---
 
+## Core Checklist（全PRで必ずチェック）`[最頻出・最重要]`
+
+### FSD Architecture `[最多頻出: FSD 21回, import 15回]`
+
+- [ ] **index.ts（公開API）経由のimport必須** — 外部スライスの内部モジュールへの直接importは絶対NG。`@entities/company/api/companyApi` ではなく `@entities/company` 経由（→ `references/code-examples.md`）
+- [ ] **features間の直接import禁止** — features間の直接import（型importも含む）は禁止。共有したい型・ロジックは`entities/`または`shared/`に昇格
+- [ ] **依存方向** — `app → pages → features → entities → shared`（上位→下位のみ）。pages層はfeatures内部（`model/`, `lib/`等）を直接参照禁止
+- [ ] **FSDエイリアス必須** — 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用
+
+### Type Safety `[型: 40回 - 最多頻出]`
+
+- [ ] **`any`型禁止** — `any`は禁止。`unknown`/`never`/ジェネリクス/型ガードで代替
+- [ ] **`enum`禁止** — TypeScriptの`enum`は禁止。`const + as const + typeof`で代替（→ `references/code-examples.md`）
+- [ ] **`console.*`禁止** — `console.log/warn/error`等は禁止。エラーは4層パイプライン経由
+- [ ] **`<script setup lang="ts">`必須** — `lang="ts"`の省略禁止
+
+### TanStack Vue Query
+
+- [ ] **QueryKey Factoryパターン** — QueryKeyは必ずFactoryパターンで定義。マスターデータは`['master', ...]` prefix必須（→ `references/code-examples.md`）
+- [ ] **Pinia非推奨** — サーバー状態をPiniaとTanStack Queryの両方で管理しない。サーバー状態はTanStack Queryに集約
+
+### State Management
+
+- [ ] **composable singletonのreadonly保護** — module-levelのrefをそのまま公開しない。`readonly()`でラップして外部から直接書き込まれないようにする（→ `references/code-examples.md`）
+
+### Error Handling `[エラー: 25回]`
+
+- [ ] **エラーメッセージ直書き禁止** — 文字列リテラルで直書きせず、カタログ定数経由（→ `references/code-examples.md`）
+
+### Vue.js Patterns
+
+- [ ] **`v-for`の`:key`安定性** — `:key`にarray indexを使用していないか。`id`等の安定した識別子を使用（→ `references/code-examples.md`）
+- [ ] **Floating Promises** — `async`関数を`await`も`void`もなしに呼び出していないか。意図的なfire-and-forgetは`void`を明示
+
+### Unused Code Detection
+
+- [ ] **未使用の関数・composable・コンポーネント・import** — 呼び出されていない定義が残っていないか
+
+### Syntax & Basic Quality
+
+- [ ] **TypeScript構文エラー・型不一致**
+- [ ] **マージコンフリクトマーカー** — `<<<<<<<`が残っていないか
+- [ ] **SFCの構造** — `<template>` → `<script setup lang="ts">` → `<style scoped>`の順
+
+---
+
+## Extended Checklist（変更内容に応じてチェック）
+
+### FSD Architecture（詳細）
+
+- **entities間の`@x`パターン** — entities間は`import type`のみ許可。ランタイムimportは禁止
+- **3+スライスから使用される機能の昇格** — 3スライス以上から参照されるコードは上位層に昇格必須
+- **Composables→Repository IFを介さず実装に直結はNG** — ComposablesがhttpClient等に直結すると依存方向違反（→ `references/code-examples.md`）
+
+### Type Safety（詳細）
+
+- **型アサーション`as`の使用** — 強制キャストが型安全でないケースに注意。型ガードで代替推奨
+- **金額にFloat演算禁止** — 金額に浮動小数点演算を直接使わない。`Amount`型（branded integer）経由
+
+### TanStack Vue Query（詳細）
+
+- **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
+- **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
+- **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
+
+### State Management（詳細）
+
+- **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
+
+### Error Handling（詳細）
+
+- **非対称なdisabled状態** — 同一フローで複数ボタンがある場合、ローディングガードが全ボタンに対称に付いているか（→ `references/code-examples.md`）
+- **try-catch漏れ** — 非同期処理に適切なエラーハンドリングがあるか。エラーがサイレントに握りつぶされていないか
+- **ユーザー向けエラーメッセージ** — エラー時にユーザーへの通知（toast等）が適切に行われているか
+
+### Vue.js Patterns（詳細）
+
+- **非同期レースコンディション** — Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスで状態が上書きされないか。requestIdガードパターンで対策（→ `references/code-examples.md`）
+- **UIガードとビジネスロジックガードの一致** — UIレベルのガード（`isClickable` computed等）だけでなく、イベントハンドラのビジネスロジック層でも同じ制約を担保しているか
+- **暗黙のtruthyチェック** — `if (value)`による暗黙チェックで`null`・`undefined`・空文字が意図通りに処理されるか
+
+### Test Quality（テストファイルが変更されている場合）
+
+- **MSW使用** — APIモックはMSWを使用しているか。`vi.fn()`の直接モック乱用は避ける
+- **FormDataを使うmutationテスト** — `FormData`を使うMutationのテストでAxiosアダプターをNode.js httpに設定しているか（`axios.defaults.adapter = 'http'`）（→ `references/code-examples.md`）
+- **型安全なモック** — モック関数に適切な型が付いているか
+- **テストケースの網羅性** — ローディング・エラー・成功状態のそれぞれをカバーしているか
+- **テストデータの独立性** — テスト間で共有される可変なオブジェクトがないか
+
+### Security（セキュリティ）
+
+- **XSS対策** — `v-html`の使用時にサニタイズされているか。ユーザー入力を直接DOMに渡していないか
+- **依存ライブラリの脆弱性** — 既知の脆弱性を持つライブラリ（例: `xlsx`）を使用していないか
+- **機密情報のログ出力** — `console.*`等でAPIキー・トークン・パスワードを出力していないか
+
+### Code Organization & DRY（詳細）
+
+- **DRY原則** — 同一・類似のロジックが複数コンポーネント/composableに存在しないか
+- **コンポーネント分割** — 1コンポーネントが複数の責務を持ちすぎていないか
+- **マジックストリング** — 複数ファイルで使われる文字列リテラルを共有定数化しているか（→ `references/code-examples.md`）
+- **ゲッター関数の二重呼び出し** — `computed`内でゲッター関数を複数回呼び出していないか（→ `references/code-examples.md`）
+- **computed内クロージャ生成** — `computed`スコープ内で関数オブジェクトを定義すると再評価のたびに再生成される。composable本体スコープに抽出（→ `references/code-examples.md`）
+- **状態リセットの対称性** — ファイル削除・変更・差替等の全パスで関連状態が適切にリセットされているか
+- **イベントハンドラの不要な再代入** — 高頻度イベントハンドラで状態が変化しない場合も毎回代入が走っていないか
+- **`@pages/`エイリアスの使用** — pages層内では`@pages/`エイリアスを使用（相対パスは規約違反）
+
+---
+
 ## Red Flags - Never Do This
 
 - 重要度インジケーターを省略
 - actionableな修正案なしにフィードバック
+- Core Checklistの項目をスキップ
 - FSD index.ts直接importを見逃す
+- features間の直接importを見逃す
 - `any`/`enum`/`console.*`の使用を見逃す
 - composable stateのreadonly保護漏れを見逃す
-- v-forのindex keyを見逃す
-- 非同期レースコンディションを見逃す
+- `v-for`のindex keyを見逃す
 - Floating Promiseを見逃す
 - コードdiffなしに修正案を提示
-- features間の直接importを見逃す
