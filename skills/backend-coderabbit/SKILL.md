@@ -205,6 +205,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 ### Migration & DB Schema（マイグレーションファイルが変更されている場合）
 
 - **リバースマイグレーション実装** — `reverse_code`がnoopではなく、ロールバック可能な実装か
+- **`RunSQL.noop` reverse後に制約消失** `[新観点 from PR#469]` - `RunSQL`でConstraintをDROPする場合、`reverse_sql=RunSQL.noop`だと、ロールバック時に元の制約が復元されない。`reverse_sql`に元の制約を再作成するSQLを明示すること。
 - **ロールバックリスク評価** — データ破壊的なマイグレーション（カラム削除、型変更等）にデータ保全策があるか
 - **マイグレーション内のBulk操作** — 大量データ更新時に`bulk_update()`やiteratorの`chunk_size`指定を使用しているか
 - **複合インデックスで代替可能な単一`db_index`** — `['company', 'year', 'month']`のような複合インデックスが存在する場合、`year`・`month`への個別`db_index=True`は冗長
