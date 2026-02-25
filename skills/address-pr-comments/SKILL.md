@@ -219,7 +219,10 @@ cat .claude/pr-context.md | head -5
 
 pr-context.md の書き出しが完了してから Plan Mode に入る。
 
-**Plan の内容に以下の構成を含めること:**
+> **Plan にはコード修正と検証のみ含める。** Post-Fix ワークフロー（スレッド返信・スキル蓄積）は
+> Stop hook が自動トリガーするため、Plan に含める必要はない。
+
+**Plan の内容:**
 
 ```
 ## 修正計画
@@ -233,17 +236,6 @@ pr-context.md の書き出しが完了してから Plan Mode に入る。
 
 ## 検証
 - ruff check / type-check / pytest 等
-
-## Post-Fix ワークフロー（コード修正・テスト・コミット・プッシュ完了後に必ず実行）
-
-`.claude/pr-context.md` を Read tool で読み、「Post-Fix ワークフロー」セクションに従って
-以下を Task tool サブエージェントで実行すること:
-
-1. **Task A**: 修正した各コメントのPRスレッドに `Fixed in <commit-hash>` を返信
-2. **Task B**: 妥当でないコメントのPRスレッドに理由を返信
-3. **Task C**: レビュースキル（backend/frontend-coderabbit）に新しい観点を追記 → claude-dotfiles にコミット＆プッシュ
-
-**Task A+B と Task C は並列実行可能。**
 ```
 
 優先度順に並べる:
@@ -256,10 +248,49 @@ pr-context.md の書き出しが完了してから Plan Mode に入る。
 
 ---
 
-## Step 4: 完了レポート
+## Step 4: Post-Fix ワークフロー（Stop hook による自動トリガー）
 
-Plan の実装（コード修正 → テスト → コミット → Post-Fix ワークフロー）が全て完了したら、以下を報告:
+> **このステップはユーザー操作不要。** Plan 実装（コード修正 → テスト → コミット → プッシュ）が完了し
+> エージェントが停止しようとすると、Stop hook (`~/.claude/hooks/post-fix-check.sh`) が
+> `.claude/pr-context.md` の存在を検知し、自動で Post-Fix ワークフローの実行を指示する。
 
+Stop hook から指示を受けたら:
+
+1. **`.claude/pr-context.md` を Read tool で読み込む**
+2. **Task tool サブエージェントで以下を並列実行:**
+
+### Task A+B: PRスレッドへの返信（並列実行可）
+
+Task tool に以下を委譲:
+- **修正した各コメント** の comment_id に対して `Fixed in <commit-hash>` を返信
+- **妥当でないコメント** の comment_id に対して返信文案の内容を返信
+
+```bash
+gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
+  --method POST \
+  --field body="<返信内容>"
+```
+
+### Task C: レビュースキルへの観点追加
+
+Task tool に以下を委譲:
+- 各修正コメントの「レビュー観点候補」フィールドを基に、対応するレビュースキルに追記
+- `backend/` → `~/claude-dotfiles/skills/backend-coderabbit/SKILL.md`
+- `frontend/` → `~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md`
+
+追記フォーマット:
+```
+- **<観点名>** `[新観点 from PR#<number>]` - <チェック内容>。<問題の理由>。<対策>。
+```
+
+追記後 claude-dotfiles にコミット＆プッシュ。
+
+3. **全て完了したら `.claude/pr-context.md` を削除:**
+```bash
+rm -f .claude/pr-context.md
+```
+
+4. **完了レポートを出力:**
 ```
 === Address PR Comments Complete ===
 
@@ -271,7 +302,7 @@ Plan の実装（コード修正 → テスト → コミット → Post-Fix ワ
   📚 レビュースキルに観点追加:    <N>件（backend: N件 / frontend: N件）
 
 スレッド返信:
-  🔧 修正コミット通知:            <N>件（全修正コメントに返信済み）
+  🔧 修正コミット通知:            <N>件
   💬 妥当でない旨の返信:          <N>件
   → 未解決コメント全 <N>件に返信完了（漏れゼロ）
 
@@ -280,12 +311,6 @@ Plan の実装（コード修正 → テスト → コミット → Post-Fix ワ
 
 コミット一覧（claude-dotfiles）:
   - <hash>: feat: PR#<N>の指摘からレビュースキルに観点を追加
-```
-
-### クリーンアップ
-
-```bash
-rm -f .claude/pr-context.md
 ```
 
 ---
@@ -298,5 +323,5 @@ rm -f .claude/pr-context.md
 - **テストが失敗したままコミットしない**
 - **妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない** — Step 3 で必ず確認を取る
 - **解決済みコメントを自動で resolve しない** — resolve はレビュワーが行うもの
-- **Plan Mode に入る前に pr-context.md を書き出さない** — Plan 実装時の post-fix ワークフローの情報源
-- **Plan の Post-Fix ワークフローをスキップしない** — コード修正だけで終わらず、スレッド返信とレビュースキル蓄積まで必ず実行する
+- **Plan Mode に入る前に pr-context.md を書き出さない** — Stop hook のトリガーに必須
+- **Stop hook の指示を無視しない** — pr-context.md が存在する限り Post-Fix を実行すること
