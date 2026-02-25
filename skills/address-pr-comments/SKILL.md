@@ -207,130 +207,118 @@ gh api graphql --paginate \
 cat .claude/pr-context.md | head -5
 ```
 
-**このステップ完了後に `/clear` してよい。** Step 4 はこのファイルから文脈を復元する。
+**書き出し完了後、即座に Step 4 へ進む。** `/clear` は不要 — Step 4 は全作業を Task tool サブエージェントに委譲するため、親のコンテキスト逼迫を回避できる。
 
 ---
 
-## Step 4: 並列実行（Task toolで同時進行）
+## Step 4: Task tool で全作業を委譲（/clear 不要）
 
-> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
+> **重要:** このステップでは `/clear` しない。全作業をサブエージェントに委譲するため、親のコンテキストは消費しない。
 
-### 4-0. コンテキストの復元（必須）
+**以下の2トラックを Task tool で並列に実行する。** 1つのメッセージ内で2つの Task tool 呼び出しを同時に行うこと。
 
-**まず `.claude/pr-context.md` を Read tool で読み込む。** `/clear` 後はこのファイルが唯一の情報源。
-ファイルが存在しない場合は、Step 3.5 がスキップされている。ユーザーに報告し、Step 1 からやり直す。
+各サブエージェントのプロンプトには `.claude/pr-context.md` の内容を**そのまま埋め込む**こと（サブエージェントはファイルの存在を知らないため）。
+
+### Track A: 修正実施 → テスト → コミット → スレッド返信 → レビュースキル反映
+
+Task tool に以下のプロンプトを渡す（`{...}` は pr-context.md から実際の値で埋める）:
 
 ```
-Read: .claude/pr-context.md
-```
+以下のPRコメント修正を実施してください。
 
-読み込んだ内容を基に、Track A / Track B に必要な情報を Task tool のプロンプトに含めること。
+## 作業環境
+- 作業ディレクトリ: {worktree-path}
+- PR: #{number} ({url})
+- Owner/Repo: {owner}/{repo}
 
-**以下の2トラックをTask toolで並列に実行する。** 1つのメッセージ内で2つのTask tool呼び出しを同時に行うこと。
+## 修正対象コメント
+{pr-context.mdの「妥当なコメント（修正対象）」セクション全体をここに貼る}
 
-### Track A: 修正実施 → テスト → コミット → レビュースキル反映
+## 作業手順（この順序で必ず全て実行すること）
 
-Task toolで以下を1つのエージェントに委譲する:
-
-#### A-1. 修正を実施
-
+### 1. 修正を実施
 承認された修正計画に従い、優先度順に修正する。修正前に必ず対象ファイルを Read tool で読むこと。
+CLAUDE.md のコーディング規約・アーキテクチャルールに準拠すること。
 
-#### A-2. テスト実行（必須）
-
-```bash
-# Backend（変更がある場合）
-cd backend && pytest
-
-# Frontend（変更がある場合）
-pnpm -C frontend run type-check
-pnpm -C frontend run lint
-pnpm -C frontend run test:unit
-
-# e2e / VRT（存在する場合）
-pnpm -C frontend run test:e2e:playwright
-pnpm -C frontend run test:visual:docker
-```
-
+### 2. テスト実行（必須）
+Backend の変更がある場合: cd {worktree-path}/backend && pytest
+Frontend の変更がある場合:
+  pnpm -C {worktree-path}/frontend run type-check
+  pnpm -C {worktree-path}/frontend run lint
+  pnpm -C {worktree-path}/frontend run test:unit
 テストが失敗した場合はコミットせず修正してから再実行する。
 
-#### A-3. コミット＆プッシュ
+### 3. コミット＆プッシュ
+- コミットメッセージは日本語、conventional commits prefix（fix:/feat:/refactor: 等）
+- 禁止表現: 「レビュー対応」「コメント対応」「指摘を反映」等の抽象的表現
+- 複数テーマにまたがる場合はコミットを分割する
+- 変更内容を具体的に記述したコミットメッセージにすること
+- コミット後プッシュする
 
-**`/commit-push` スキルを使用すること。**
+### 4. 修正コミットハッシュをPRスレッドに返信（必須・漏れゼロ）
+プッシュ完了後、修正した各コメントの comment_id に対して以下を実行:
+  COMMIT_HASH=$(git rev-parse --short HEAD)
+  gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
+    --method POST \
+    --field body="Fixed in ${COMMIT_HASH}"
+コミットを分割した場合は、各コメントに対応する正しいハッシュを使うこと。
 
-**禁止表現:** `fix: レビュー対応` / `fix: コメント対応` / `fix: 指摘を反映` 等の抽象的表現。
-複数テーマにまたがる場合はコミットを分割する（分割した分だけ `/commit-push` を実行する）。
+### 5. レビュースキルへの観点追加（最重要・スキップ禁止）
+修正した内容はセルフレビューを潜り抜けてきた欠点。次回以降 self-review で検出されるよう、
+レビュースキルに観点を追記する。
 
-#### A-3.5. 修正コミットハッシュをスレッドに返信
+対象スキルファイル:
+- backend/ 配下の修正 → ~/claude-dotfiles/skills/backend-coderabbit/SKILL.md
+- frontend/ 配下の修正 → ~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md
 
-**プッシュ完了後、修正した各コメントのスレッドに対応コミットハッシュを返信する。**
-これにより、全未解決コメントに必ず何らかの返信が入る（Track B の「妥当でない」返信と合わせて漏れゼロ）。
+追記フォーマット:
+  - **<観点名>** `[新観点 from PR#{number}]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
 
-```bash
-# 直前のコミットハッシュを取得（複数コミットに分割した場合は対応するハッシュを使う）
-COMMIT_HASH=$(git rev-parse --short HEAD)
-
-# 各修正コメントのスレッドに返信
-gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
-  --method POST \
-  --field body="Fixed in ${COMMIT_HASH}"
-```
-
-コミットを分割した場合は、各コメントに対応する正しいコミットハッシュを紐づけること。
-
-#### A-4. レビュースキルへの観点追加（最重要）
-
-**このPRで修正した内容は、セルフレビューを潜り抜けてきた欠点。次回以降は `self-review` で自動検出されるよう、対応するレビュースキルに観点として追記する。**
-
-修正したコメントをファイルパスで分類:
-- `backend/` 配下の修正 → `~/claude-dotfiles/skills/backend-coderabbit/SKILL.md` に追記
-- `frontend/` 配下の修正 → `~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` に追記
-
-**追記フォーマット:**
-```
-- **<観点名>** `[新観点 from PR#<PR番号>]` - <何をチェックするかの説明>。<なぜ問題になるか>。<どうすれば良いか>。
-```
-
-**例:**
-```
-- **useEffectの依存配列の漏れ** `[新観点 from PR#466]` - `useEffect`の依存配列に使用している変数が全て含まれているか。
-  漏れがあると古い値を参照したまま動作するバグになる。ESLintの`exhaustive-deps`ルールで検出可能。
-```
-
+各修正コメントの「レビュー観点候補」フィールドを参考にすること。
 既存のセクションに収まらない場合は、最も近いセクションの末尾に追記する。
+追記後:
+  cd ~/claude-dotfiles
+  git add skills/
+  git commit -m "feat: PR#{number}の指摘からbackend/frontend-coderabbitに観点を追加"
+  git push
 
-```bash
-cd ~/claude-dotfiles
+### 6. 結果報告
+以下のフォーマットで報告:
+  修正件数: N件
+  コミット: <hash>: <message>（複数あれば全て）
+  スレッド返信: N件（各comment_idとハッシュの対応）
+  レビュースキル更新: backend N件 / frontend N件
 ```
-
-**`/commit-push` スキルを使用すること。**
-
-コミットメッセージ例: `feat: PR#<PR番号>の指摘からbackend/frontend-coderabbitに観点を追加`
 
 ### Track B: 妥当でないコメントへの返信
 
-Task toolで以下を1つのエージェントに委譲する:
+Task tool に以下のプロンプトを渡す:
 
-各コメントの **スレッドに直接返信** を投稿する。
-`in_reply_to` にコメントIDを指定してスレッドに返信すること。
-
-```bash
-# CodeRabbitコメントスレッドへの返信（in_reply_to 必須）
-gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
-  --method POST \
-  --field body="<返信内容>"
 ```
+以下のPRコメントに「妥当でない」旨の返信を投稿してください。
 
-**返信の書き方:**
+## 作業環境
+- Owner/Repo: {owner}/{repo}
+
+## 返信対象コメント
+{pr-context.mdの「妥当でないコメント（返信対象）」セクション全体をここに貼る}
+
+## 作業手順
+各コメントの comment_id に対して、返信文案の内容でスレッドに返信する:
+
+  gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
+    --method POST \
+    --field body="<返信文案の内容>"
+
+返信の書き方:
 - 丁寧かつ明確に、なぜ対応しないかを説明する
 - 該当するCLAUDE.mdのルールや実装の意図を示す
 - 相手の意図を否定せず、現状のコードが正しい理由を伝える
 
-例:
-```
-この実装はCLAUDE.md「Result型パターン」のルール（タプルアンパック必須）に従っており、
-意図的な設計です。`result, error = usecase.execute()` の形式がプロジェクト規約のため、
-現状を維持します。
+## 結果報告
+以下のフォーマットで報告:
+  返信件数: N件
+  各返信: comment_id → 投稿OK/NG
 ```
 
 ---
@@ -377,4 +365,5 @@ rm -f .claude/pr-context.md
 - **テストが失敗したままコミットしない**
 - **妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない** — Step 3 で必ず確認を取る
 - **解決済みコメントを自動で resolve しない** — resolve はレビュワーが行うもの
-- **Step 3.5 のコンテキスト永続化をスキップしない** — `/clear` 後に文脈が消えてレビュースキル蓄積が不完全になる
+- **Step 3.5 のコンテキスト永続化をスキップしない** — サブエージェントへの情報受け渡しに必須
+- **Step 4 で `/clear` しない** — 全作業は Task tool サブエージェントに委譲するため不要。`/clear` するとワークフローが中断する
