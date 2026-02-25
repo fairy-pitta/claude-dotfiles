@@ -180,6 +180,8 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **バリデーション実行順序** - 削除・更新処理の前にバリデーションが実行されているか。副作用の後にチェックをしていないか
 - **正規化後の再バリデーション** - 入力値を正規化・変換した後に結果が有効か再検証しているか。例: `normalize_month_params()`後に空配列になるケースをエラーとして弾く
 - **年の範囲チェック** - `year <= 0`のみで1900-9999の範囲チェックが漏れていないか
+- **frozen dataclassの__post_init__バリデーション不足** `[新観点 from PR#465]` - `@dataclass(frozen=True)` のエンティティで `__post_init__` が定義されていない場合、不正な値でインスタンスが作られる可能性がある。`item_name`の非空・`year`の範囲・`month`/`relative_month`の正規表現など、ドメインルールをすべて `__post_init__` 内で `ValidationError` を使って検証すること。
+- **from_string/enum変換メソッドの入力型チェック不足** `[新観点 from PR#465]` - `from_string(value)` で `isinstance(value, str)` チェックを行わないと、`int`や`None`が渡された場合に `AttributeError` になる。`strip()` の呼び出し前に必ず型チェックを行い、非文字列なら `ValueError` を上げること。
 
 ```
 _⚠️ Potential issue_ | _🟠 Major_
@@ -260,6 +262,11 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **Deprecated API使用** - 非推奨のDjango API（例: `CheckConstraint`のclass引数）を使用していないか
 - **コメント正確性** - コメントが実際のコードの挙動と一致しているか
 - **型アノテーションスタイルの一貫性** - `Union[A, B]`と`A | B`が混在していないか。PEP 604対応済みプロジェクトでは`|`構文に統一
+- **同一Repository呼び出しのprivateメソッド抽出** `[新観点 from PR#465]` - `save()`と`find_*()`で同じ `Entity.reconstruct(...)` の呼び出しが重複している場合、`_to_entity(obj)` のようなprivate staticメソッドに抽出してDRYを達成する。Infrastructure層のRepositoryImplで特に頻出するパターン。
+- **dict comprehensionの重複キー上書きバグ** `[新観点 from PR#465]` - `{(e.year, e.month): e.figure for e in entries if ...}` のようなdict comprehensionは同一キーが複数存在すると後の値で上書きされてデータが消える。集計が必要な場合は加算ループ `result[key] = result.get(key, 0) + e.figure` に変更すること。
+- **サイレントドロップより明示的エラー返却** `[新観点 from PR#465]` - `if name := map.get(id) is not None` のようなlist comprehension内のNoneフィルタでデータをサイレントにドロップするのは危険。存在すべきデータが欠損している場合はエラーを返すべき。特にマスターデータとの突合処理ではドロップではなく`failure(ValueError(...))`を返すこと。
+- **Moduleレベルシングルトンとインスタンス変数の重複** `[新観点 from PR#465]` - ステートレスなCalculatorやServiceが一部はモジュールレベルシングルトン（`_calc = Calculator()`）、一部は`__init__`でインスタンス変数として初期化されている場合は統一する。モジュールレベルシングルトンに統一してメモリ節約と一貫性を確保すること。
+- **テストヘルパーのconftest.py共通化** `[新観点 from PR#465]` - 複数のテストファイルで同一の`_make_entry`/`_make_fixture`ヘルパーが定義されている場合、同ディレクトリの`conftest.py`に共通化してimportで使い回す。3箇所以上での重複は必ず指摘すること。
 
 ### 10. Migration & DB Schema（マイグレーション）
 
@@ -267,6 +274,7 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **ロールバックリスク評価** - データ破壊的なマイグレーション（カラム削除、型変更等）にデータ保全策があるか
 - **マイグレーション内のBulk操作** - 大量データ更新時に`bulk_update()`やiteratorの`chunk_size`指定を使用しているか
 - **`logger`/`print`をマイグレーションのbackwardに使わない** - マイグレーションのbackward関数内でloggerやprintを使わない
+- **複合インデックスで代替可能な単一db_index** `[新観点 from PR#465]` - `['company', 'year', 'month']` のような複合インデックスが存在する場合、`year`や`month`フィールドへの個別`db_index=True`は冗長。複合インデックスの左端に含まれないカラムに単独インデックスがある場合は指摘し削除を推奨する。
 
 ### 11. Syntax & Basic Quality（構文・基本品質）
 
