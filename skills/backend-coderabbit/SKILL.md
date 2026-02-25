@@ -182,6 +182,8 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **年の範囲チェック** - `year <= 0`のみで1900-9999の範囲チェックが漏れていないか
 - **frozen dataclassの__post_init__バリデーション不足** `[新観点 from PR#465]` - `@dataclass(frozen=True)` のエンティティで `__post_init__` が定義されていない場合、不正な値でインスタンスが作られる可能性がある。`item_name`の非空・`year`の範囲・`month`/`relative_month`の正規表現など、ドメインルールをすべて `__post_init__` 内で `ValidationError` を使って検証すること。
 - **from_string/enum変換メソッドの入力型チェック不足** `[新観点 from PR#465]` - `from_string(value)` で `isinstance(value, str)` チェックを行わないと、`int`や`None`が渡された場合に `AttributeError` になる。`strip()` の呼び出し前に必ず型チェックを行い、非文字列なら `ValueError` を上げること。
+- **reconstruct()でのUUID型不変条件の未検証** `[新観点 from PR#466]` - `reconstruct()` メソッドは型ヒントで `UUID` を指定していても、`isinstance(field, UUID)` チェックがないとDBから取り込んだ破損データをドメインに混入できる。`create()` で生成したUUIDではなく、DB再構築時に文字列やNoneが渡られる可能性がある。他のエンティティ（例: `IndicatorCategoryMapping.reconstruct()`）のように `isinstance` チェック + `ValidationError` を追加すること。
+- **エラーメッセージと正規表現の整合性** `[新観点 from PR#466]` - エラーメッセージに記載した許容値の範囲（例: `"01〜13"`）が実際の `RegexValidator` パターン（例: `'^(0[1-9]|1[0-3])$'`）と一致しているか必ず確認すること。`00` を含む `"00〜13"` とメッセージで書きながらregexで `0[1-9]` と `00` を弾いている場合はメッセージが誤り。
 
 ```
 _⚠️ Potential issue_ | _🟠 Major_
@@ -225,6 +227,9 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **テストデータの独立性** - テスト間で共有される可変なdict・listがないか。テスト汚染を防ぐ
 - **テストはクラスベース禁止・関数ベース必須** `[新観点 from PR#465]` - 新規テストファイルでクラスを使っていないか確認。`class TestXxx:` の形式は禁止。すべて `def test_xxx():` のモジュールレベル関数で記述すること。
 - **テスト名は英語必須** `[新観点 from PR#465]` - テスト関数名に日本語を使っていないか確認。`test_<subject>__<condition>__<expected>` 形式の英語名を使うこと。
+- **interaction検証テストでexecute()の戻り値も確認すること** `[新観点 from PR#466]` - `mock_service.method.assert_called_once()` 等のinteraction検証のみで `usecase.execute()` の戻り値を確認しないテストは不完全。`result, error = usecase.execute(journal_id)` のようにアンパックして `assert error is None` / `assert result is not None` まで検証すること。将来のリファクタでexecute()がエラーを返すようになっても気づけない。
+- **count()のみのアサーションは不十分** `[新観点 from PR#466]` - `assert Model.objects.count() == 1` は件数が合っても「誰が残ったか」を保証しない。無効行がスキップされて有効行が残るケースでは `assert Model.objects.filter(key="valid").exists()` のように特定の行の存在も確認すること。
+- **異常系テストでDB不変性を検証すること** `[新観点 from PR#466]` - `CommandError` や例外が発生するテストで、例外の発生だけを確認してDB状態の変化をチェックしないと途中書き込みが発生しても見逃す。`assert Model.objects.count() == 0` のようにDB不変性まで検証すること。
 
 ```
 _⚠️ Potential issue_ | _🟠 Major_
@@ -275,6 +280,7 @@ _⚠️ Potential issue_ | _🟠 Major_
 - **マイグレーション内のBulk操作** - 大量データ更新時に`bulk_update()`やiteratorの`chunk_size`指定を使用しているか
 - **`logger`/`print`をマイグレーションのbackwardに使わない** - マイグレーションのbackward関数内でloggerやprintを使わない
 - **複合インデックスで代替可能な単一db_index** `[新観点 from PR#465]` - `['company', 'year', 'month']` のような複合インデックスが存在する場合、`year`や`month`フィールドへの個別`db_index=True`は冗長。複合インデックスの左端に含まれないカラムに単独インデックスがある場合は指摘し削除を推奨する。
+- **update_or_create()はfull_clean()を呼ばないためDB-level CheckConstraintが必要** `[新観点 from PR#466]` - Django の `update_or_create()` / `bulk_create()` / `save()` (update_fields指定時) はモデルの `validators` を実行しない。アプリケーション層での検証だけではDB整合性を保証できないため、重要なフィールドには `Meta.constraints` に `CheckConstraint` を追加してDB側でも制約すること。特に `CharField` の正規表現バリデーションや `IntegerField` の範囲バリデーションが対象。
 
 ### 11. Syntax & Basic Quality（構文・基本品質）
 
