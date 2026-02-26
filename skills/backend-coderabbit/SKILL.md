@@ -138,6 +138,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **N+1クエリ** — ループ内でDBクエリを実行していないか。`select_related()`/`prefetch_related()`の適用漏れ
 - [ ] **`SELECT *`禁止** — `select_related(...).get()`は全カラム取得になる。`.only()`/`.values()`で絞り込む（→ `references/code-examples.md`）
 - [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT *禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
+- [ ] **QuerySetのorder_by明示** `[新観点 from PR#472]` — Django の QuerySet で `.all()` を使用する際、`order_by` を指定しないとDB依存で順序が揺れる。APIレスポンスの安定性・テスト再現性のため、`order_by` は常に明示すべき
 
 ### Test Quality（テストファイルが変更されている場合）
 
@@ -201,6 +202,9 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **バリデーション追加時の失敗系テスト** `[新観点 from PR#472]` — UseCase/Repository層にバリデーションを追加した際、失敗パスのテストも同時に追加しているかチェックする。正常系テストだけではバリデーションの実効性が保証されない。各ガード条件に対応する回帰テストを作成する
 - **Factory traitの活用** `[新観点 from PR#472]` — テストでFactoryのフィールドを直接指定している場合、既存traitで同等の設定ができないかチェックする。trait（例: for_large_item=True）を使うことでFactory定義の変更に自動追従でき、テストの保守性が向上する
 - **テストフィクスチャのCSRF設定** `[新観点 from PR#472]` — 新規テストファイルでAPIClientフィクスチャを独自定義する際、conftest.pyの規約（enforce_csrf_checks=True + CSRFトークン設定）を踏襲しているかチェックする。GETのみのテストでも規約統一のためCSRFを有効化する
+- **DIテスト配線検証** `[新観点 from PR#472]` — DIテストでは型チェック（isinstance）だけでなく依存配線の検証まで含めるべき。同ファイル内の既存DIテストパターンとの一貫性をチェックし、resolve後のインスタンスが正しい依存を持つことまで確認する
+- **APIコントラクトテスト網羅性** `[新観点 from PR#472]` — APIコントラクトテストではレスポンスシリアライザの全フィールドをカバーすべき。新フィールド追加時に既存テストの更新漏れを検出するため、レスポンスbodyのキー一覧とシリアライザのfields定義を突合する
+- **テストヘルパーMUSTルール準拠** `[新観点 from PR#472]` — 新規テスト作成時にCODING_STANDARDS.md 9.3のテストヘルパー利用MUSTルールに準拠しているか確認する。既存のconftest.pyヘルパーやFactoryを使わず独自にセットアップしている箇所を検出する
 
 ### Code Organization & DRY（詳細）
 
