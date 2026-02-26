@@ -169,6 +169,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
 - **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
 - **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
+- **フォールバックデータソースのローディング状態反映** `[新観点 from PR#472]` — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
 
 ### State Management（詳細）
 
@@ -185,6 +186,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **非同期レースコンディション** — Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスで状態が上書きされないか。requestIdガードパターンで対策（→ `references/code-examples.md`）
 - **UIガードとビジネスロジックガードの一致** — UIレベルのガード（`isClickable` computed等）だけでなく、イベントハンドラのビジネスロジック層でも同じ制約を担保しているか
 - **暗黙のtruthyチェック** — `if (value)`による暗黙チェックで`null`・`undefined`・空文字が意図通りに処理されるか
+- **非同期propsに依存するローカルstateの整合性** `[新観点 from PR#472]` — propsの非同期データ（API結果等）に依存するローカルstateは、元データ変更時にstaleな値が残らないかwatchで同期する
 
 ### Test Quality（テストファイルが変更されている場合）
 
@@ -193,6 +195,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **型安全なモック** — モック関数に適切な型が付いているか
 - **テストケースの網羅性** — ローディング・エラー・成功状態のそれぞれをカバーしているか
 - **テストデータの独立性** — テスト間で共有される可変なオブジェクトがないか
+- **モックハンドラのAPIバリデーション再現** `[新観点 from PR#472]` — MSWモックハンドラがAPIの必須パラメータ組み合わせバリデーションを正しく再現しているか確認する。片方のみ指定時のエラーレスポンス等
 
 ### Security（セキュリティ）
 
