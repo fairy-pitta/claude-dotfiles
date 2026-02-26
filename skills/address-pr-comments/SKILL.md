@@ -219,9 +219,6 @@ cat .claude/pr-context.md | head -5
 
 pr-context.md の書き出しが完了してから Plan Mode に入る。
 
-> **Plan にはコード修正と検証のみ含める。** Post-Fix ワークフロー（スレッド返信・スキル蓄積）は
-> Stop hook が自動トリガーするため、Plan に含める必要はない。
-
 **Plan の内容:**
 
 ```
@@ -236,6 +233,12 @@ pr-context.md の書き出しが完了してから Plan Mode に入る。
 
 ## 検証
 - ruff check / type-check / pytest 等
+
+## Post-Fix（自動実行）
+コミット＆プッシュ後、Stop hook が以下を自動実行:
+- PRスレッドに修正コミット通知を返信
+- 妥当でないコメントに返信
+- レビュースキルに観点を追加（claude-dotfiles）
 ```
 
 優先度順に並べる:
