@@ -231,8 +231,9 @@ pr-context.md の書き出しが完了してから Plan Mode に入る。
 | 1 | 🔴 | `path/to/file.ts` | 42 | 指摘概要 | 具体的な修正方法 |
 | 2 | 🟠 | `backend/app/...` | 88 | 指摘概要 | 具体的な修正方法 |
 
-## 検証
+## 検証・コミット
 - ruff check / type-check / pytest 等
+- `/commit-push` スキルでコミット＆プッシュ
 
 ## Post-Fix（自動実行）
 コミット＆プッシュ後、Stop hook が以下を自動実行:
