@@ -137,6 +137,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - [ ] **N+1クエリ** — ループ内でDBクエリを実行していないか。`select_related()`/`prefetch_related()`の適用漏れ
 - [ ] **`SELECT *`禁止** — `select_related(...).get()`は全カラム取得になる。`.only()`/`.values()`で絞り込む（→ `references/code-examples.md`）
+- [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT *禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
 
 ### Test Quality（テストファイルが変更されている場合）
 
@@ -179,6 +180,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **`reconstruct()`でのUUID型不変条件の未検証** — `isinstance(field, UUID)` チェックがないとDB破損データがDomainに混入する
 - **エラーメッセージと正規表現の整合性** — エラーメッセージに記載した許容値範囲が実際の`RegexValidator`パターンと一致しているか
 - **月文字列のint変換による形式ロス** `[新観点 from PR#469]` — MM形式の月文字列をint()変換して再ゼロパディングするパターンを検出する。「1」→1→「01」の暗黙正規化で入力バリデーションが無効化される。月操作はstr→str変換で行うべき
+- **UseCase層の引数整合性ガード** `[新観点 from PR#472]` — 引数間の依存関係がある場合（例: category_typeとsub_category_id/large_item_id）、UseCase層でも防御的に検証しているかチェックする。Presentation層でバリデーションしていてもUseCase層は独立したインターフェースとして整合性を保証すべき。引数の組み合わせ制約はUseCase.execute()の冒頭でガードする
 
 ### Database Performance（詳細）
 
@@ -196,6 +198,9 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **テストヘルパーの`conftest.py`共通化** — 3箇所以上で同一ヘルパーが重複しているなら`conftest.py`に共通化
 - **リポジトリテストのクエリ数検証一貫性** `[新観点 from PR#469]` — DBアクセスを伴うリポジトリテストでdjango_assert_num_queriesが統一的に使用されているか確認する。空結果テストでも省略しない
 - **ファクトリのデフォルト値とモデル制約の整合性** `[新観点 from PR#472]` — テストファクトリのデフォルト値がモデルの`CheckConstraint`に違反していないか確認する。特にpolymorphic FKパターン（category_type + FK）では、デフォルトの組み合わせが制約条件を満たすこと
+- **バリデーション追加時の失敗系テスト** `[新観点 from PR#472]` — UseCase/Repository層にバリデーションを追加した際、失敗パスのテストも同時に追加しているかチェックする。正常系テストだけではバリデーションの実効性が保証されない。各ガード条件に対応する回帰テストを作成する
+- **Factory traitの活用** `[新観点 from PR#472]` — テストでFactoryのフィールドを直接指定している場合、既存traitで同等の設定ができないかチェックする。trait（例: for_large_item=True）を使うことでFactory定義の変更に自動追従でき、テストの保守性が向上する
+- **テストフィクスチャのCSRF設定** `[新観点 from PR#472]` — 新規テストファイルでAPIClientフィクスチャを独自定義する際、conftest.pyの規約（enforce_csrf_checks=True + CSRFトークン設定）を踏襲しているかチェックする。GETのみのテストでも規約統一のためCSRFを有効化する
 
 ### Code Organization & DRY（詳細）
 

@@ -163,6 +163,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 
 - **型アサーション`as`の使用** — 強制キャストが型安全でないケースに注意。型ガードで代替推奨
 - **金額にFloat演算禁止** — 金額に浮動小数点演算を直接使わない。`Amount`型（branded integer）経由
+- **エンティティ型との型ドリフト防止** `[新観点 from PR#472]` — features層でentities層の型フィールドと一致するインライン型定義（例: `{ key: string; label: string }`）がないかチェックする。Pick/Omitで元のエンティティ型を参照すべき。インライン型はエンティティ型の変更に追従できずドリフトの原因になる
 
 ### TanStack Vue Query（詳細）
 
