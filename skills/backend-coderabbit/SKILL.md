@@ -120,6 +120,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **Result型タプルアンパック** — `result, error = usecase.execute()`の形式が必須。`.error`属性アクセス禁止
 - [ ] **`_`でエラー無視はNG** — `value, _ = usecase.execute()`でエラーを捨てると認可チェックが消える。必ずエラーを変数に受けてチェック（→ `references/code-examples.md`）
 - [ ] **Enum必須** — ステータス値・カテゴリ値に文字列リテラル禁止。`TextChoices`/`IntegerChoices`を使用
+- [ ] **bool⊂int型チェック** `[新観点 from PR#469]` — isinstance(x, int)によるバリデーション箇所でboolが通過しないか確認する。Pythonではboolはintのサブクラスのため、isinstance(True, int)がTrueを返す。intチェックの前にisinstance(x, bool)で排除する
 
 ### Security & Authorization
 
@@ -148,6 +149,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **構文エラー** — importの括弧閉じ忘れ、未解決のマージコンフリクトマーカー（`<<<<<<<`）
 - [ ] **命名規約** — CLAUDE.md準拠（`{action}_{entity}_usecase.py`, `{Entity}RepositoryImpl`等）
 - [ ] **未使用コード** — 未使用の関数・import・型定義・定数がないか
+- [ ] **ドキュメント内ファイルパス参照の正確性** `[新観点 from PR#469]` — リファレンスドキュメント内のファイルパスが実際のファイル名と一致しているか確認する。特にファイル名の単数/複数形の不一致に注意
 
 ---
 
@@ -172,9 +174,11 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **正規化後の再バリデーション** — 入力値を正規化・変換した後に結果が有効か再検証しているか
 - **年の範囲チェック** — `year <= 0`のみで1900-9999の範囲チェックが漏れていないか（→ `references/code-examples.md`）
 - **frozen dataclassの`__post_init__`バリデーション** — 不正な値でインスタンスが作られないよう、`item_name`の非空・`year`の範囲等を`__post_init__`内で`ValidationError`を使って検証（→ `references/code-examples.md`）
+- **frozen dataclass不変条件の網羅性** `[新観点 from PR#469]` — __post_init__で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
 - **`from_string()`/enum変換の入力型チェック** — `isinstance(value, str)` チェックがないと`int`や`None`で`AttributeError`になる（→ `references/code-examples.md`）
 - **`reconstruct()`でのUUID型不変条件の未検証** — `isinstance(field, UUID)` チェックがないとDB破損データがDomainに混入する
 - **エラーメッセージと正規表現の整合性** — エラーメッセージに記載した許容値範囲が実際の`RegexValidator`パターンと一致しているか
+- **月文字列のint変換による形式ロス** `[新観点 from PR#469]` — MM形式の月文字列をint()変換して再ゼロパディングするパターンを検出する。「1」→1→「01」の暗黙正規化で入力バリデーションが無効化される。月操作はstr→str変換で行うべき
 
 ### Database Performance（詳細）
 
@@ -190,10 +194,13 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **`count()`のみのアサーションは不十分** — `assert Model.objects.count() == 1` だけでなく、特定行の存在も確認
 - **異常系テストでDB不変性を検証** — 例外発生テストで `assert Model.objects.count() == 0` のようにDB不変性まで検証
 - **テストヘルパーの`conftest.py`共通化** — 3箇所以上で同一ヘルパーが重複しているなら`conftest.py`に共通化
+- **リポジトリテストのクエリ数検証一貫性** `[新観点 from PR#469]` — DBアクセスを伴うリポジトリテストでdjango_assert_num_queriesが統一的に使用されているか確認する。空結果テストでも省略しない
 
 ### Code Organization & DRY（詳細）
 
 - **DRY原則違反** — 同一・類似のヘルパーメソッドやバリデーションロジックが複数箇所に存在
+- **入力型だけ異なる同一アルゴリズムの重複** `[新観点 from PR#469]` — 入力型が異なるだけでロジックが同一の関数ペアがないか確認する。型変換部分を分離して共通化すべき。2箇所でもメンテリスクがある
+- **メソッド間の同一集計再計算** `[新観点 from PR#469]` — メインメソッドで作成した集計結果(dict等)をサブメソッドに渡さず再計算していないか確認する。O(n)走査の不要な繰り返しを防ぐ
 - **同一Repository呼び出しのprivate メソッド抽出** — `save()`と`find_*()`で同じ`Entity.reconstruct(...)`が重複している場合、`_to_entity(obj)`に抽出
 - **dict comprehensionの重複キー上書きバグ** — `{key: value for ...}`は同一キーで後の値が上書きされる。集計が必要な場合は加算ループに変更（→ `references/code-examples.md`）
 - **サイレントドロップより明示的エラー返却** — list comprehension内のNoneフィルタでデータを捨てるのは危険。存在すべきデータが欠損している場合は`failure(ValueError(...))`を返す（→ `references/code-examples.md`）
