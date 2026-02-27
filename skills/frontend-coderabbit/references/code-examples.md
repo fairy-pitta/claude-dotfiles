@@ -80,6 +80,22 @@ export const companyKeys = {
 }
 ```
 
+### QueryKeyファクトリの引数にstringではなくドメイン型を使う
+
+```typescript
+// ❌ Bad: string型のまま
+export const analysisIndicatorKeys = {
+  byCategory: (categoryType: string, categoryId: string) =>
+    [...keys.all, "by-category", categoryType, categoryId] as const,
+}
+
+// ✅ Good: ドメインのUnion型を使う
+export const analysisIndicatorKeys = {
+  byCategory: (categoryType: IndicatorCategoryType, categoryId: string) =>
+    [...keys.all, "by-category", categoryType, categoryId] as const,
+}
+```
+
 ---
 
 ## State Management
@@ -244,6 +260,22 @@ const label = computed(() => {
     return items[index % 2]
   }
 })
+```
+
+### MSWハンドラのドメイン別分離
+
+```typescript
+// ❌ Bad: handlers.tsに全ドメインのハンドラを直接定義
+export const analysisIndicatorHandlers = [...]
+export const handlers = [...authHandlers, ...analysisIndicatorHandlers]
+
+// ✅ Good: ドメイン別ファイルに分離してimport
+// handlers/analysis-indicator.ts
+export const analysisIndicatorHandlers = [...]
+
+// handlers.ts
+import { analysisIndicatorHandlers } from './handlers/analysis-indicator'
+export const handlers = [...authHandlers, ...analysisIndicatorHandlers]
 ```
 
 ### computed 内クロージャ生成の回避

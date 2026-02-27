@@ -41,6 +41,18 @@ if error:
     raise error
 ```
 
+### TypedDictの区分フィールドにstrを使わない
+
+```python
+# ❌ Bad: ドメインEnumがある区分フィールドにstrを使う
+class CategoryResponseItem(TypedDict):
+    category_type: str
+
+# ✅ Good: Literal型で制約する
+class CategoryResponseItem(TypedDict):
+    category_type: Literal["sub_category", "large_item"]
+```
+
 ---
 
 ## Security & Authorization
@@ -160,6 +172,19 @@ class JournalItem:
             raise ValidationError("invalid month format")
 ```
 
+### query_params.getの戻り値をtruthyで判定しない
+
+```python
+# ❌ Bad: 空文字""とNoneを区別できない
+category_type_str = request.query_params.get('category_type')
+if category_type_str:  # 空文字""の場合もFalseになる
+    field = 'category_id'
+
+# ✅ Good: is not Noneで判定
+if category_type_str is not None:
+    field = 'category_id'
+```
+
 ### from_string/enum変換メソッドの入力型チェック
 
 ```python
@@ -214,6 +239,21 @@ _⚠️ Potential issue_ | _🟠 Major_
 +     csrf_client.credentials(HTTP_X_CSRFTOKEN=csrf_token)
 ```
 </details>
+```
+
+### バリデーション追加時は境界値テストもセットで追加
+
+```python
+# ✅ Good: バリデーション実装に対応するテストを追加
+def test_sub_category_with_invalid_id_fails(self) -> None:
+    """sub_category_id=0の場合はエラーになること."""
+    result, error = self.usecase.execute(
+        GetIndicatorsByCategoryRequest(
+            category_type=IndicatorCategoryType.SUB_CATEGORY,
+            sub_category_id=0,  # 境界値
+        )
+    )
+    assert isinstance(error, ValueError)
 ```
 
 ### interaction検証 + 戻り値の確認
