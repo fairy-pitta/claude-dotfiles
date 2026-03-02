@@ -159,6 +159,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **entities間の`@x`パターン** — entities間は`import type`のみ許可。ランタイムimportは禁止
 - **3+スライスから使用される機能の昇格** — 3スライス以上から参照されるコードは上位層に昇格必須
 - **Composables→Repository IFを介さず実装に直結はNG** — ComposablesがhttpClient等に直結すると依存方向違反（→ `references/code-examples.md`）
+- **UseCase/Application層のインフラライブラリ依存禁止** `[新観点 from PR#437]` — `entities/model/` 配下の UseCase に `import axios from "axios"` 等のインフラライブラリが含まれていないか確認する。Axios エラー変換はリポジトリ（Mutation/Infrastructure）層で行い、UseCase はドメインエラー（プロジェクト定義の Error サブクラス）のみを知るべき
+- **Vue SFC からの型エクスポート禁止** `[新観点 from PR#437]` — `.vue` ファイルから `export type` するのは避け、`model/types.ts` 等の純粋な TypeScript ファイルに型を定義する。`index.ts` からは `.vue` ではなく `./model/types` を参照してエクスポートする
 
 ### Type Safety（詳細）
 
@@ -171,6 +173,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
 - **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
 - **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
+- **invalidateQueries 後の重複 refetch** `[新観点 from PR#437]` — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
+- **Promise.allSettled + AbortSignal チェック** `[新観点 from PR#437]` — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
 - **フォールバックデータソースのローディング状態反映** `[新観点 from PR#472]` — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
 
 ### State Management（詳細）
@@ -186,6 +190,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 ### Vue.js Patterns（詳細）
 
 - **非同期レースコンディション** — Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスで状態が上書きされないか。requestIdガードパターンで対策（→ `references/code-examples.md`）
+- **setTimeout/setInterval の cleanup 漏れ** `[新観点 from PR#437]` — `setTimeout` を使う composable や SFC で、戻り値（timer ID）を変数に保存し `onBeforeUnmount` でクリアしているか確認する。`let timer: ReturnType<typeof setTimeout> | null = null` → `onBeforeUnmount(() => { if (timer) clearTimeout(timer) })`。再呼び出し前に `clearTimeout` がないと二重発火の原因にもなる
 - **UIガードとビジネスロジックガードの一致** — UIレベルのガード（`isClickable` computed等）だけでなく、イベントハンドラのビジネスロジック層でも同じ制約を担保しているか
 - **暗黙のtruthyチェック** — `if (value)`による暗黙チェックで`null`・`undefined`・空文字が意図通りに処理されるか
 - **非同期propsに依存するローカルstateの整合性** `[新観点 from PR#472]` — propsの非同期データ（API結果等）に依存するローカルstateは、元データ変更時にstaleな値が残らないかwatchで同期する
@@ -193,6 +198,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 ### Test Quality（テストファイルが変更されている場合）
 
 - **MSW使用** — APIモックはMSWを使用しているか。`vi.fn()`の直接モック乱用は避ける
+- **テスト期待値の文字列リテラル禁止** `[新観点 from PR#437]` — `rejects.toThrow('エラーメッセージ')` 等の期待値に文字列リテラルを直書きしていないか。定数（`MESSAGES.VALIDATION.X`等）を参照する。定数側の変更に追従できず、テストの意図も不明確になる
 - **FormDataを使うmutationテスト** — `FormData`を使うMutationのテストでAxiosアダプターをNode.js httpに設定しているか（`axios.defaults.adapter = 'http'`）（→ `references/code-examples.md`）
 - **型安全なモック** — モック関数に適切な型が付いているか
 - **テストケースの網羅性** — ローディング・エラー・成功状態のそれぞれをカバーしているか
