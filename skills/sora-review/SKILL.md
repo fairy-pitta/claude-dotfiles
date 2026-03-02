@@ -11,7 +11,7 @@ Conduct code reviews mimicking lits0ra's casual, direct, and conversational appr
 
 **Announce at start:** "I'm using the sora-review skill to review your code!"
 
-**Data source:** 429 review comments from 50 PRs (322 PRs analyzed)
+**Data source:** 429 review comments from 50 PRs (322 PRs analyzed) + PR #417 (feature/area-select-only-assigned) lits0ra 15 inline comments
 
 ## Language Adaptation
 
@@ -179,8 +179,48 @@ https://djangobrothers.com/blogs/django_bulk_create_update/
 
 ## プロジェクトでよく出る問題（実PRレビューデータ由来）
 
-20件のPR（277件のCodeRabbit + 21件の人間レビューコメント）から抽出した頻出パターン。
+20件のPR（277件のCodeRabbit + 21件の人間レビューコメント）+ PR #417（lits0ra 15件）から抽出した頻出パターン。
 **レビュー時にこのリストを最初にチェックして、該当するものがあればフラッグする。**
+
+---
+
+### ⚠️ 【最最優先】責務の分離チェック（PR #417 lits0ra指摘由来 - 厳しく見る）
+
+> lits0ra 総評: 「責務管理等をもう少し見てもらえると！！！」
+
+**責務の分離は他のチェックより先に、最も厳しく確認すること。**
+
+| # | チェック | Soraっぽい指摘例 |
+|---|---------|-----------------|
+| R1 | **Viewでバリデーションを直接行っていないか** | 「Viewでバリデーションを直接行うべきではないと思います！Serializer/UseCaseに移してもらえると！他にも同様の箇所があります！」 |
+| R2 | **Composable/Hookに複数の責務が混在していないか** | 「責務が色々混ざりすぎな気がします。見直してもらえると助かります！！！！」 |
+| R3 | **既存のエラーハンドリングパターンを無視した独自実装を作っていないか** | 「既存の実装を使用してほしいです！ちょっとエラーハンドリング周りが複雑すぎる気がします！」 |
+| R4 | **既存パターンと重複する新ファイルを作っていないか** | 「このファイルも不必要な気がします。他のパターンに沿ってもらえると助かります！保守性が下がっちゃいます！」 |
+| R5 | **複数UseCaseに同じロジックが重複していないか** | 「〇〇usecase.pyにも同様な処理があり、どこかに共通化して切り出したいです」 |
+| R6 | **不要な中間ファイル・ラッパーが作られていないか** | 「このファイル全体、〇〇内に移動した方がよさそうです。不必要なファイルが増えてる気がします！」 |
+| R7 | **バックエンドとフロントエンドのスキーマが一致しているか** | 「バックエンド側とスキーマが不一致な気がしてます！」 |
+| R8 | **既存の定数・型を使わず独自定義していないか** | 「ROLE_CODE_TO_JAPANESE_NAMEを使用するのはどうでしょうか？」 |
+| R9 | **型の中身が既存型と同一なのにわざわざ別型を定義していないか** | 「AssignableRegionと型の中身が同じで、わざわざこれって切り替える必要があったりしますでしょうか？」 |
+| R10 | **不要な条件分岐がないか**（フレームワークが自動処理する部分） | 「payload.messageがundefinedの場合、Axiosは自動的にそのフィールドをJSONから除外します。この条件分岐は不要では？」 |
+
+**責務の分離で見るべき観点（具体的）:**
+
+```
+バックエンド:
+- Viewにバリデーション → Serializer/UseCaseへ移す
+- Repositoryにビジネスロジック → UseCaseへ移す
+- 複数UseCase間の重複ロジック → shared/utils/serviceに抽出
+- UseCaseに不要なコード（実際に呼ばれていない処理）
+
+フロントエンド:
+- Composableに「データ取得 + 状態管理 + UI制御」が混在 → 分割
+- Pageコンポーネントに直接APIロジック → entities/featuresへ移す
+- 既存のエラーカタログを使わず独自のerrors/codes.ts, errors/catalog.tsを作成
+- mapBackendError.tsのような独自変換ファイル → 既存の共通機構を使う
+- endpoints.tsの独立 → 関連ファイルに内包させる
+```
+
+---
 
 ### 最優先チェック（毎回確認）
 
@@ -218,6 +258,80 @@ https://djangobrothers.com/blogs/django_bulk_create_update/
 | P20 | **データアクセスが正当か** | 「これって、assignment_idにちゃんとアクセスできますか？」 |
 
 ## Review Focus Areas
+
+### 0. 責務の分離 (Highest Priority - PR #417 lits0ra指摘由来)
+
+**これがすべての観点の中で最も重要。**
+
+**Backend - バリデーション配置:**
+```
+Viewでバリデーションを直接行うべきではないと思います！
+他にも同様の箇所があります！
+（他にもそういう場所があるやんっていう話かもしれませんが、直してもらえると。。。）
+```
+
+**Frontend - Composable肥大化:**
+```
+責務が色々混ざりすぎな気がします
+見直してもらえると助かります！！！！
+```
+
+**共通化すべき重複ロジック:**
+```
+〇〇usecase.pyにも同様な処理があり、
+どこかに共通化して切り出したいです
+```
+
+**既存パターンを無視した独自実装:**
+```
+既存の実装を使用してほしいです！
+ちょっとエラーハンドリング周りが複雑すぎる気がします！
+```
+
+```
+このファイルも不必要な気がします
+他のパターンに沿ってもらえると助かります！保守性が下がっちゃいます！
+```
+
+**不要なファイルの増殖:**
+```
+このファイル全体、〇〇内に移動した方がよさそうです。
+そのあとlib配下に置いて汎用関数を作成したいですね
+```
+
+```
+このファイルはどういう意味がある感じでしょうか！
+不要だと思いました！
+```
+
+**不要なコード（呼ばれていない処理）:**
+```
+このコード、不必要な気がしてますがどうでしょうか？？
+```
+
+**型の重複定義:**
+```
+AssignableRegionと型の中身が同じで、
+わざわざこれって切り替える必要があったりしますでしょうか？
+```
+
+**既存定数を使わない独自定義:**
+```
+ROLE_CODE_TO_JAPANESE_NAMEを使用するのはどうでしょうか？
+```
+
+**フレームワークが処理する不要な条件分岐:**
+```
+payload.messageがundefinedの場合、Axiosは自動的にそのフィールドを
+JSONから除外するので、この条件分岐は不要では？
+```
+
+**バックエンドとフロントエンドのスキーマ不一致:**
+```
+バックエンド側とスキーマが不一致な気がしてます！
+```
+
+---
 
 ### 1. Type Safety (High Priority)
 
@@ -383,7 +497,9 @@ usecaseではエラー内容を握りつぶさずにViewでエラー内容を握
 ### 1. Quick Scan
 
 Read through the changes quickly and identify:
-- **Type safety issues** (Any usage - HIGHEST PRIORITY!, missing type hints)
+- **責務の分離** (HIGHEST PRIORITY! - 新規ファイル増殖・View内バリデーション・Composable肥大化)
+- **既存パターンからの逸脱** (独自エラー定義・独自型・既存定数の無視)
+- **Type safety issues** (Any usage, missing type hints)
 - **Variable reassignment** (unnecessary re-assignment)
 - **Single responsibility** (functions/classes doing too much)
 - **Code clarity** (unclear names, missing/unclear comments)
@@ -395,6 +511,7 @@ Read through the changes quickly and identify:
 ### 2. Comment on Key Issues
 
 Focus on what matters most (priority order):
+0. **責務の分離** (最最優先！ - R1〜R10 全チェック)
 1. **Type safety** (Any型は絶対NG! - 29 mentions)
 2. **Variable reassignment** (unnecessary re-assignment)
 3. **Single responsibility** (functions/classes too large)
@@ -536,7 +653,12 @@ Keep it simple and direct:
 
 ## Red Flags - Sora's Pet Peeves
 
-**Absolute no-go:**
+**Absolute no-go（即指摘）:**
+- **View層でのバリデーション直書き** → Serializer/UseCaseへ
+- **Composableへの責務詰め込み** → データ取得・状態・UI制御の混在
+- **既存エラーパターンを無視した独自errors/ファイルの作成** → 保守性が下がる
+- **複数UseCase間の重複ロジック放置** → 共通化してください
+- **不要なファイル増殖**（mapBackendError.ts, endpoints.ts独立等）
 - `Any` type usage
 - Missing type hints
 - N+1 queries
@@ -545,6 +667,10 @@ Keep it simple and direct:
 - Magic strings (not using constants)
 
 **Mildly annoying:**
+- 型の中身が同じなのに別名で重複定義
+- 既存定数・既存型を使わず独自定義
+- フレームワークが処理する部分の不要な条件分岐（Axiosのundefined除外等）
+- バックエンド/フロントエンドのスキーマ不一致
 - Unused imports
 - Unused functions/methods/types/constants (dead code)
 - Missing null checks
