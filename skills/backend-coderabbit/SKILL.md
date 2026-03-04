@@ -179,10 +179,12 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **年の範囲チェック** — `year <= 0`のみで1900-9999の範囲チェックが漏れていないか（→ `references/code-examples.md`）
 - **frozen dataclassの`__post_init__`バリデーション** — 不正な値でインスタンスが作られないよう、`item_name`の非空・`year`の範囲等を`__post_init__`内で`ValidationError`を使って検証（→ `references/code-examples.md`）
 - **frozen dataclass不変条件の網羅性** `[新観点 from PR#469]` — __post_init__で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
+- **エンティティ不変条件の空白チェック** `[新観点 from PR#480]` — ドメインエンティティの `__post_init__` で `not self.field` ではなく `not self.field.strip()` を使っているか確認。空白のみ入力を通過させるバグを防ぐ。エラーメッセージが定数化されているかも併せて確認
 - **`from_string()`/enum変換の入力型チェック** — `isinstance(value, str)` チェックがないと`int`や`None`で`AttributeError`になる（→ `references/code-examples.md`）
 - **`reconstruct()`でのUUID型不変条件の未検証** — `isinstance(field, UUID)` チェックがないとDB破損データがDomainに混入する
 - **`reconstruct()` 内 Enum 変換の例外保護** `[新観点 from PR#480]` — `SomeEnum(value)` 形式の Enum 変換は不正な値で `ValueError` を送出する。`reconstruct()` 内で変換する場合は `try/except ValueError` で保護し、エラーを明示的に再送出すること。Repository の `except DatabaseError` では `ValueError` は捕捉されないため Result 契約が崩れる
 - **Repository の except 節での ValueError 捕捉** `[新観点 from PR#480]` — `except DatabaseError as exc: return failure(exc)` は mapper 由来の `ValueError` を捕捉しない。mapper（`model_to_entity` 等）が送出する例外も Result に包むため `except (DatabaseError, ValueError) as exc:` にすること
+- **例外チェーンの `from exc`** `[新観点 from PR#480]` — `except ValueError as exc: raise ... from exc` パターンを使用しているか確認。`from exc` がないとトレースバック情報が失われデバッグ困難になる
 - **エラーメッセージと正規表現の整合性** — エラーメッセージに記載した許容値範囲が実際の`RegexValidator`パターンと一致しているか
 - **月文字列のint変換による形式ロス** `[新観点 from PR#469]` — MM形式の月文字列をint()変換して再ゼロパディングするパターンを検出する。「1」→1→「01」の暗黙正規化で入力バリデーションが無効化される。月操作はstr→str変換で行うべき
 - **UseCase層の引数整合性ガード** `[新観点 from PR#472]` — 引数間の依存関係がある場合（例: category_typeとsub_category_id/large_item_id）、UseCase層でも防御的に検証しているかチェックする。Presentation層でバリデーションしていてもUseCase層は独立したインターフェースとして整合性を保証すべき。引数の組み合わせ制約はUseCase.execute()の冒頭でガードする
@@ -193,6 +195,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - **Bulk操作** — 複数レコードの作成・更新時に`bulk_create()`/`bulk_update()`を使用しているか
 - **Admin list_displayでのN+1** — `list_display`に集計表示がある場合、`get_queryset()`で`annotate(Count(...))`しているか
+- **ページネーションの副キー** `[新観点 from PR#480]` — `order_by` が単一カラムの場合、同値タイブレーカー不在で重複・取りこぼしが起きる。PKを副キーに追加して安定ソートにする
 
 ### Test Quality（詳細）
 
@@ -211,6 +214,9 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **DIテスト配線検証** `[新観点 from PR#472]` — DIテストでは型チェック（isinstance）だけでなく依存配線の検証まで含めるべき。同ファイル内の既存DIテストパターンとの一貫性をチェックし、resolve後のインスタンスが正しい依存を持つことまで確認する
 - **APIコントラクトテスト網羅性** `[新観点 from PR#472]` — APIコントラクトテストではレスポンスシリアライザの全フィールドをカバーすべき。新フィールド追加時に既存テストの更新漏れを検出するため、レスポンスbodyのキー一覧とシリアライザのfields定義を突合する
 - **テストヘルパーMUSTルール準拠** `[新観点 from PR#472]` — 新規テスト作成時にCODING_STANDARDS.md 9.3のテストヘルパー利用MUSTルールに準拠しているか確認する。既存のconftest.pyヘルパーやFactoryを使わず独自にセットアップしている箇所を検出する
+- **テストモックの `create_autospec`** `[新観点 from PR#480]` — ABCやProtocolが定義されたリポジトリを `Mock()` でモックしている場合、`create_autospec(Repository, instance=True)` に置換すべき。シグネチャ検証でリファクタ退行を検知
+- **バリデーションテストのエラー値検証** `[新観点 from PR#480]` — `assert error is not None` だけでなく `str(error) == ErrorConstants.XXX` で具体的な値を検証。別エラーへの退行を検知する
+- **統合テストのクエリバジェット統一** `[新観点 from PR#480]` — 一覧エンドポイントにクエリ上限があるなら詳細エンドポイントにも `django_assert_max_num_queries` を設定。N+1退行を検知するため全エンドポイントに統一して適用する
 
 ### Code Organization & DRY（詳細）
 
