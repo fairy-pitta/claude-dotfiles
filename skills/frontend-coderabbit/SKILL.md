@@ -208,6 +208,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **モックハンドラのAPIバリデーション再現** `[新観点 from PR#472]` — MSWモックハンドラがAPIの必須パラメータ組み合わせバリデーションを正しく再現しているか確認する。片方のみ指定時のエラーレスポンス等
 - **Playwright ルートのクエリパラメータ対応** `[新観点 from PR#480]` — APIリクエストにクエリパラメータが付く場合（例: `?page=1&page_size=50`）、glob パターン `'**/api/endpoint/'` はマッチしない。`page.route()` のパターンは正規表現 `/\/api\/endpoint\//` を使うこと。ページネーションパラメータ追加後は既存テストの route パターンを見直す
 - **E2E/VRTテストのセレクタ安定性とモックレスポンス整合性** `[新観点 from PR#480]` — CSS クラスセレクタはスタイル変更で壊れやすい。コンポーネントに `data-testid` を追加し `page.getByTestId()` を使うこと。また MSW/Playwright モックのレスポンス形式はAPIの実際のレスポンス形式（ページネーションフィールド `count`/`page`/`page_size` 等）と一致させること
+- **ソートテストの non-null assertion** `[新観点 from PR#480]` - ループ範囲が保証されているソート検証テストで `data?.[i+1].createdAt.getTime() ?? 0` のパターンは false positive のリスク。`expect(data!.length).toBeGreaterThanOrEqual(2)` を追加し `data![i]`/`data![i+1]` の non-null assertion を使う。
 
 ### Security（セキュリティ）
 

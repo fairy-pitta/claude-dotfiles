@@ -165,6 +165,8 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - **ドメインエンティティのEnum型引数の実行時型検証** — `create()`等のファクトリメソッドでEnum型パラメータを受け取る場合、`isinstance(x, SomeEnum)` の実行時チェックがあるか。型ヒントだけでは実行時に文字列が通り抜ける
 - **Serializer/Domainモデルフィールド不一致** — APIレスポンスのフィールド名がDomainエンティティと整合しているか
+- **QuerySet 戻り値型の明示** `[新観点 from PR#480]` - `# type: ignore[return]` で型チェックを回避していないか確認。CLAUDE.md「型ヒント必須」に従い `QuerySet[Model]` の戻り値型を明示すること。
+- **Serializer SerializerMethodField の戻り値型精度** `[新観点 from PR#480]` - `SerializerMethodField` のメソッドで `Optional[str]` を返しているが、渡すフィールドが non-Optional な場合は `str` に絞れる。エンティティのフィールド定義と照合して型精度を上げること。
 
 ### Security（詳細）
 
@@ -232,6 +234,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **複合インデックスで代替可能な単一`db_index`** — `['company', 'year', 'month']`のような複合インデックスが存在する場合、`year`・`month`への個別`db_index=True`は冗長
 - **一意制約追加前の重複データ検証** `[新観点 from PR#480]` — `unique=True` を追加する migration で、既存の重複データを事前チェックする `RunPython` がないと本番適用時に `IntegrityError` が発生する。`RunPython` で重複を検出して `RuntimeError` で停止するか、重複解消ロジックを含めること
 - **`update_or_create()`はfull_clean()を呼ばない** → `Meta.constraints`に`CheckConstraint`を追加してDB側でも制約すること。特に`CharField`の正規表現バリデーションや`IntegerField`の範囲バリデーションが対象（→ `references/code-examples.md`）
+- **Migration インポート位置** `[新観点 from PR#480]` - `django.db.models` の汎用クラス（Count など）は関数内ではなくモジュールトップでインポートする。モデル取得（`apps.get_model()`）は関数内が必須だが、汎用クラスはトップレベルで OK。
 
 ---
 
