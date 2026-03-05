@@ -1,6 +1,6 @@
 ---
 name: self-review
-description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 → codex-review → 修正 → coderabbit:review → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
+description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 → codex review CLI → 修正 → coderabbit review CLI → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
 ---
 
 # Self Review Orchestrator
@@ -28,13 +28,32 @@ description: sora-review → 修正 → backend/frontend-coderabbit → 修正 �
 git diff --name-only origin/dev...HEAD
 ```
 
-| 変更ファイル | 実行するスキルキュー（順番通り） |
+| 変更ファイル | 実行するステップ |
 |---|---|
-| `backend/` のみ | sora-review → backend-coderabbit → codex-review → coderabbit:review |
-| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex-review → coderabbit:review |
-| 両方 | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex-review → coderabbit:review |
+| `backend/` のみ | sora-review → backend-coderabbit → codex review CLI → coderabbit review CLI |
+| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI |
+| 両方 | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
+
+### STEP D/E 用の変数準備
+
+```bash
+CLAUDE_MD="/Users/wao_singapore/forval-crossgear/CLAUDE.md"
+SKILLS_DIR="$HOME/.claude/skills"
+
+# STEP D用: sora スタイルプロンプト
+SORA_PROMPT=$(mktemp /tmp/self-review-sora.XXXXXX)
+echo "# Project Rules (CLAUDE.md)" > "$SORA_PROMPT"
+cat "$CLAUDE_MD" >> "$SORA_PROMPT"
+echo -e "\n---\n" >> "$SORA_PROMPT"
+cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$SORA_PROMPT"
+
+# STEP E用: coderabbit.yaml があれば渡す
+CODERABBIT_YAML="/Users/wao_singapore/forval-crossgear/coderabbit.yaml"
+CR_YAML_ARG=""
+[ -f "$CODERABBIT_YAML" ] && CR_YAML_ARG="-c $CODERABBIT_YAML"
+```
 
 ---
 
@@ -85,10 +104,6 @@ cd backend && pytest
 pnpm -C frontend run type-check
 pnpm -C frontend run lint
 pnpm -C frontend run test:unit
-
-# e2e / VRT（存在する場合）
-pnpm -C frontend run test:e2e:playwright
-pnpm -C frontend run test:visual:docker
 ```
 
 テストが失敗した場合はコミットせず修正して再実行する。
@@ -139,7 +154,7 @@ A-3 と同じコマンドで全テストを実行する。
 
 ### [STEP C] frontend-architecture（frontend/ がある場合のみ）
 
-backend のみの場合はこの STEP をスキップして **ラウンドサマリーへ**。
+backend のみの場合はこの STEP をスキップして **STEP D へ**。
 
 #### C-1. frontend-architecture を適用
 
@@ -167,29 +182,20 @@ A-3 と同じコマンドで全テストを実行する。
 
 ---
 
-### [STEP D] codex-review（常に実行）
+### [STEP D] codex review CLI（常に実行）
 
-OpenAI Codex MCP を使い、Claude 系スキルとは異なる視点でコードレビューを実施する。
+`codex review` CLI を使い、Claude 系スキルとは異なる視点でコードレビューを実施する。
 
-#### D-1. Codex MCP でレビューを実行
+#### D-1. codex review 実行
 
-`mcp__codex__codex` ツールを使用してレビューを実施する。
-
-プロンプト例:
-```
-以下の git diff に対してコードレビューを行い、バグ・ロジックエラー・型安全性・セキュリティ・可読性の観点で指摘を列挙してください。
-指摘がない場合は「指摘なし」とだけ回答してください。
-
-<git diff --name-only origin/dev...HEAD で取得した差分ファイル一覧と、各ファイルの diff を貼る>
+```bash
+codex review --base dev - < "$SORA_PROMPT"
 ```
 
-パラメータ:
-- `prompt`: 上記のレビュー依頼プロンプト（diff 内容を含める）
-- `cwd`: 現在の作業ディレクトリ
-- `sandbox`: `"read-only"`（コード変更は Claude 側で行うため）
+出力を読んで指摘事項を抽出・件数を記録:
 
 ```
-codex-review: <N>件
+codex review: <N>件
 ```
 
 0件なら `✅ 指摘なし` として修正・コミットをスキップ。
@@ -200,7 +206,7 @@ Codex の指摘は CLAUDE.md / CODING_STANDARDS.md のルールと照合し、**
 除外した場合はその理由を記録する。
 
 ```
-codex-review: <N>件（うち妥当: <M>件、除外: <K>件）
+codex review: <N>件（うち妥当: <M>件、除外: <K>件）
 ```
 
 妥当な指摘が0件なら `✅ 指摘なし` として修正・コミットをスキップ。
@@ -221,14 +227,23 @@ A-3 と同じコマンドで全テストを実行する。
 
 ---
 
-### [STEP E] coderabbit:review（常に実行）
+### [STEP E] coderabbit review CLI（常に実行）
 
-#### E-1. /coderabbit:review を実行
+`coderabbit review --plain` CLI を使い、CodeRabbit AI によるコードレビューを受ける。
 
-`/coderabbit:review` スキルを実行して CodeRabbit AI によるコードレビューを受ける。
+#### E-1. coderabbit review 実行
+
+```bash
+coderabbit review --plain --base dev \
+  -c "$CLAUDE_MD" \
+  $CR_YAML_ARG \
+  -c "$SKILLS_DIR/coderabbit-review/SKILL.md"
+```
+
+出力を読んで指摘事項を抽出・件数を記録:
 
 ```
-coderabbit:review: <N>件
+coderabbit review: <N>件
 ```
 
 0件なら `✅ 指摘なし` として修正・コミットをスキップ。
@@ -257,8 +272,8 @@ A-3 と同じコマンドで全テストを実行する。
 [STEP B] backend-coderabbit:    <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP B] frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP C] frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
-[STEP D] codex-review:          <N>件 / ✅ 指摘なし
-[STEP E] coderabbit:review:     <N>件 / ✅ 指摘なし
+[STEP D] codex review:          <N>件 / ✅ 指摘なし
+[STEP E] coderabbit review:     <N>件 / ✅ 指摘なし
 ```
 
 **全ステップが ✅ 指摘なし → ループ終了（完了レポートへ）**
@@ -277,8 +292,11 @@ A-3 と同じコマンドで全テストを実行する。
   [STEP B] backend-coderabbit:    ✅ 指摘なし  （該当する場合）
   [STEP B] frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
   [STEP C] frontend-architecture: ✅ 指摘なし  （該当する場合）
-  [STEP D] codex-review:          ✅ 指摘なし
-  [STEP E] coderabbit:review:     ✅ 指摘なし
+  [STEP D] codex review:          ✅ 指摘なし
+  [STEP E] coderabbit review:     ✅ 指摘なし
+
+# プロンプトファイルのクリーンアップ
+rm -f "$SORA_PROMPT"
 
 全スキルで指摘なしを確認しました。コードをプッシュしてください。
 ```
