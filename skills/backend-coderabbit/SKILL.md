@@ -167,6 +167,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **Serializer/Domainモデルフィールド不一致** — APIレスポンスのフィールド名がDomainエンティティと整合しているか
 - **QuerySet 戻り値型の明示** `[新観点 from PR#480]` - `# type: ignore[return]` で型チェックを回避していないか確認。CLAUDE.md「型ヒント必須」に従い `QuerySet[Model]` の戻り値型を明示すること。
 - **Serializer SerializerMethodField の戻り値型精度** `[新観点 from PR#480]` - `SerializerMethodField` のメソッドで `Optional[str]` を返しているが、渡すフィールドが non-Optional な場合は `str` に絞れる。エンティティのフィールド定義と照合して型精度を上げること。
+- **EventStream型定義の網羅性** `[新観点 from PR#486]` — AWS Bedrock等の外部サービスのストリームイベント型が、チャンクだけでなく例外イベント型も含んでいるかチェック。TypeDictのtotal=Falseの適切な使用。
 
 ### Security（詳細）
 
@@ -190,6 +191,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **UseCase層の引数整合性ガード** `[新観点 from PR#472]` — 引数間の依存関係がある場合（例: category_typeとsub_category_id/large_item_id）、UseCase層でも防御的に検証しているかチェックする。Presentation層でバリデーションしていてもUseCase層は独立したインターフェースとして整合性を保証すべき。引数の組み合わせ制約はUseCase.execute()の冒頭でガードする
 - **UseCaseの値域検証** `[新観点 from PR#476]` - UseCaseでIDパラメータの`None`チェックに加えて値域（`<= 0`など）の検証も行っているか。View層で検証されていてもUseCaseは独立したビジネスロジック単位として自己完結すべきなため、直接呼び出し経路でも不正入力を拒否できるよう値域検証を追加すること。
 - **Presentation層のエラーメッセージ定数化** `[新観点 from PR#476]` - ヘルパー関数内の`raise ValueError(f"...")`等のインラインエラーメッセージが定数化されているか。CLAUDE.mdルール「エラーメッセージ定数化」に従い、`SummaryErrors`等の定数クラス経由にすること。またPresentationヘルパーで発生する例外はView層でキャッチして`ApiResponse.error`に変換すること。
+- **assert文の本番使用禁止** `[新観点 from PR#486]` — python -Oで無効化されるassertをバリデーションに使っていないかチェック。明示的なif文+エラーレスポンスに置き換える。
 
 ### Database Performance（詳細）
 
@@ -230,6 +232,8 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **Deprecated API使用** — 非推奨のDjango API（例: `CheckConstraint`のclass引数）を使用していないか
 - **コメント正確性** — コメントが実際のコードの挙動と一致しているか
 - **型アノテーションスタイルの一貫性** — `Union[A, B]`と`A | B`が混在していないか
+- **到達不能コードの検出** `[新観点 from PR#486]` — 防御ガード（`if not x: return`）が上流のバリデーションで到達不能になっていないかチェック。冗長な防御コードはテストカバレッジを下げ保守コストを増やす。
+- **設定値マジックナンバーの定数化** `[新観点 from PR#486]` — TTL・タイムアウト等のビジネス設定値がローカル変数にハードコードされていないかチェック。constants/に定義して一元管理する。
 
 ### Migration & DB Schema（マイグレーションファイルが変更されている場合）
 
