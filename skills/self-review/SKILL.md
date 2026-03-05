@@ -1,6 +1,6 @@
 ---
 name: self-review
-description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
+description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 → codex-review → 修正 → coderabbit:review → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
 ---
 
 # Self Review Orchestrator
@@ -30,9 +30,9 @@ git diff --name-only origin/dev...HEAD
 
 | 変更ファイル | 実行するスキルキュー（順番通り） |
 |---|---|
-| `backend/` のみ | sora-review → backend-coderabbit |
-| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture |
-| 両方 | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture |
+| `backend/` のみ | sora-review → backend-coderabbit → codex-review → coderabbit:review |
+| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex-review → coderabbit:review |
+| 両方 | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex-review → coderabbit:review |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
 
@@ -95,10 +95,7 @@ pnpm -C frontend run test:visual:docker
 
 #### A-4. コミット
 
-```bash
-git add .
-git commit -m "fix: <sora-reviewの指摘に基づく具体的な修正内容>"
-```
+`/commit-push` スキルを使用してコミット＆プッシュする。
 
 禁止: `fix: sora-reviewの指摘を反映` / `fix: レビュー対応` 等の抽象的表現。
 複数テーマにまたがる場合はコミットを分割する。
@@ -134,10 +131,7 @@ A-3 と同じコマンドで全テストを実行する。
 
 #### B-4. コミット
 
-```bash
-git add .
-git commit -m "fix: <coderabbitの指摘に基づく具体的な修正内容>"
-```
+`/commit-push` スキルを使用してコミット＆プッシュする。
 
 #### ↓ コンテキスト確認 → 80% 以上なら `/compact` → STEP C へ
 
@@ -167,10 +161,89 @@ A-3 と同じコマンドで全テストを実行する。
 
 #### C-4. コミット
 
-```bash
-git add .
-git commit -m "fix: <frontend-architectureの指摘に基づく具体的な修正内容>"
+`/commit-push` スキルを使用してコミット＆プッシュする。
+
+#### ↓ コンテキスト確認 → 80% 以上なら `/compact` → STEP D へ
+
+---
+
+### [STEP D] codex-review（常に実行）
+
+OpenAI Codex MCP を使い、Claude 系スキルとは異なる視点でコードレビューを実施する。
+
+#### D-1. Codex MCP でレビューを実行
+
+`mcp__codex__codex` ツールを使用してレビューを実施する。
+
+プロンプト例:
 ```
+以下の git diff に対してコードレビューを行い、バグ・ロジックエラー・型安全性・セキュリティ・可読性の観点で指摘を列挙してください。
+指摘がない場合は「指摘なし」とだけ回答してください。
+
+<git diff --name-only origin/dev...HEAD で取得した差分ファイル一覧と、各ファイルの diff を貼る>
+```
+
+パラメータ:
+- `prompt`: 上記のレビュー依頼プロンプト（diff 内容を含める）
+- `cwd`: 現在の作業ディレクトリ
+- `sandbox`: `"read-only"`（コード変更は Claude 側で行うため）
+
+```
+codex-review: <N>件
+```
+
+0件なら `✅ 指摘なし` として修正・コミットをスキップ。
+
+#### D-2. 指摘の妥当性フィルタ
+
+Codex の指摘は CLAUDE.md / CODING_STANDARDS.md のルールと照合し、**プロジェクトルールに反する指摘は除外**する。
+除外した場合はその理由を記録する。
+
+```
+codex-review: <N>件（うち妥当: <M>件、除外: <K>件）
+```
+
+妥当な指摘が0件なら `✅ 指摘なし` として修正・コミットをスキップ。
+
+#### D-3. 修正
+
+A-2 と同様に優先度順で修正する。
+
+#### D-4. テスト実行（必須）
+
+A-3 と同じコマンドで全テストを実行する。
+
+#### D-5. コミット
+
+`/commit-push` スキルを使用してコミット＆プッシュする。
+
+#### ↓ コンテキスト確認 → 80% 以上なら `/compact` → STEP E へ
+
+---
+
+### [STEP E] coderabbit:review（常に実行）
+
+#### E-1. /coderabbit:review を実行
+
+`/coderabbit:review` スキルを実行して CodeRabbit AI によるコードレビューを受ける。
+
+```
+coderabbit:review: <N>件
+```
+
+0件なら `✅ 指摘なし` として修正・コミットをスキップ。
+
+#### E-2. 修正
+
+A-2 と同様に優先度順で修正する。
+
+#### E-3. テスト実行（必須）
+
+A-3 と同じコマンドで全テストを実行する。
+
+#### E-4. コミット
+
+`/commit-push` スキルを使用してコミット＆プッシュする。
 
 #### ↓ コンテキスト確認 → 80% 以上なら `/compact` → ラウンドサマリーへ
 
@@ -184,6 +257,8 @@ git commit -m "fix: <frontend-architectureの指摘に基づく具体的な修�
 [STEP B] backend-coderabbit:    <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP B] frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP C] frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
+[STEP D] codex-review:          <N>件 / ✅ 指摘なし
+[STEP E] coderabbit:review:     <N>件 / ✅ 指摘なし
 ```
 
 **全ステップが ✅ 指摘なし → ループ終了（完了レポートへ）**
@@ -202,6 +277,8 @@ git commit -m "fix: <frontend-architectureの指摘に基づく具体的な修�
   [STEP B] backend-coderabbit:    ✅ 指摘なし  （該当する場合）
   [STEP B] frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
   [STEP C] frontend-architecture: ✅ 指摘なし  （該当する場合）
+  [STEP D] codex-review:          ✅ 指摘なし
+  [STEP E] coderabbit:review:     ✅ 指摘なし
 
 全スキルで指摘なしを確認しました。コードをプッシュしてください。
 ```
@@ -214,5 +291,5 @@ git commit -m "fix: <frontend-architectureの指摘に基づく具体的な修�
 - **テストが失敗したままコミットしない**
 - **スキルのチェックリストを実際に適用せずに「指摘なし」と判定しない**
 - **`fix: レビュー対応` 等の抽象的なコミットメッセージを使わない**
-- **STEP A → B → C の順番を変えない**
+- **STEP A → B → C → D → E の順番を変えない**
 - **1ステップでも指摘があればラウンドを最初から回し直す**

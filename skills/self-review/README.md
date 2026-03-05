@@ -10,6 +10,7 @@
 | backend-coderabbit | `backend/` に変更がある場合 |
 | frontend-coderabbit | `frontend/` に変更がある場合 |
 | frontend-architecture | `frontend/` に変更がある場合 |
+| coderabbit:review | 常に適用 |
 
 ## フロー
 
@@ -17,7 +18,7 @@
 変更ファイル確認 → スキルセット決定
   ↓
 [ラウンド N]
-  sora-review → backend/frontend-coderabbit → frontend-architecture
+  sora-review → backend/frontend-coderabbit → frontend-architecture → coderabbit:review
   ↓
 全指摘ゼロ？ → Yes → 完了
            ↓ No

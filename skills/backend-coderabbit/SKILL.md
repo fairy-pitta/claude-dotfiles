@@ -127,11 +127,13 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **permission_classes明示設定** — DRF ViewにPermissionが必ず明示されているか。デフォルト依存禁止（→ `references/code-examples.md`）
 - [ ] **認可バイパス経路** — Result型の誤用やエラーハンドリング不備により認可チェックがスキップされる経路がないか
 - [ ] **write_only on sensitive fields** — パスワード等の機密フィールドに`write_only=True`が設定されているか
+- [ ] **冪等キー実装のTOCTOUチェック** `[新観点 from PR#486]` — cache.get/setの分離パターンは並行リクエストで競合する。冪等制御にはcache.add()等の原子的操作を使い、エラーパスでのロック解放漏れがないか確認
 
 ### Error Messages & Constants
 
 - [ ] **エラーメッセージ定数化** — 文字列リテラルでエラーメッセージを直接記述していないか。`app/shared/constants/`で管理（→ `references/code-examples.md`）
 - [ ] **`logger`/`print`禁止** — `logger`・`print`（マイグレーションbackward含む）の使用禁止
+- [ ] **ユーザー向け/内部向けメッセージの混在チェック** `[新観点 from PR#486]` — Msg/InternalMsgの分離が不十分だとAPIレスポンスに内部メッセージが露出するリスクがある。メッセージ定数を追加する際、用途（ユーザー向け/内部向け）を確認して適切なクラスに配置すること
 
 ### Database Performance
 
@@ -192,6 +194,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **UseCaseの値域検証** `[新観点 from PR#476]` - UseCaseでIDパラメータの`None`チェックに加えて値域（`<= 0`など）の検証も行っているか。View層で検証されていてもUseCaseは独立したビジネスロジック単位として自己完結すべきなため、直接呼び出し経路でも不正入力を拒否できるよう値域検証を追加すること。
 - **Presentation層のエラーメッセージ定数化** `[新観点 from PR#476]` - ヘルパー関数内の`raise ValueError(f"...")`等のインラインエラーメッセージが定数化されているか。CLAUDE.mdルール「エラーメッセージ定数化」に従い、`SummaryErrors`等の定数クラス経由にすること。またPresentationヘルパーで発生する例外はView層でキャッチして`ApiResponse.error`に変換すること。
 - **assert文の本番使用禁止** `[新観点 from PR#486]` — python -Oで無効化されるassertをバリデーションに使っていないかチェック。明示的なif文+エラーレスポンスに置き換える。
+- **SSEジェネレータの例外捕捉範囲チェック** `[新観点 from PR#486]` — ストリーミングレスポンスのジェネレータでは、特定例外のみ捕捉すると他の例外でストリームが無言で途切れる。GeneratorExit以外を包括的に捕捉し、クライアントにエラーイベントを送信すること
 
 ### Database Performance（詳細）
 
