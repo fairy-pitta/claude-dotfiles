@@ -236,6 +236,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **イベントハンドラの不要な再代入** — 高頻度イベントハンドラで状態が変化しない場合も毎回代入が走っていないか
 - **`@pages/`エイリアスの使用** — pages層内では`@pages/`エイリアスを使用（相対パスは規約違反）
 - **APIエンドポイント定数化** `[新観点 from PR#486]` — fetch/axiosのURL文字列が直書きされていないかチェック。定数として抽出してDRY原則を維持する。
+- **dialog アクセシブル名の確認** `[新観点 from PR#497]` — `role="dialog"` または `role="alertdialog"` の要素が `aria-labelledby` か `aria-label` のいずれかを持つことを確認。両方 `undefined` の場合はスクリーンリーダーが認識できない。共通コンポーネントのデフォルト値設定が必要か確認する。
+- **Vue Transition + watch(flush:"post") でのフォーカスタイミング** `[新観点 from PR#497]` — Transition アニメーション中の watch コールバックでフォーカスを設定する場合、`nextTick + requestAnimationFrame` でラップしてレイアウト完了後に実行することを確認する。
 
 ---
 
