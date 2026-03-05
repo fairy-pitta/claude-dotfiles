@@ -226,6 +226,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **テストモックの `create_autospec`** `[新観点 from PR#480]` — ABCやProtocolが定義されたリポジトリを `Mock()` でモックしている場合、`create_autospec(Repository, instance=True)` に置換すべき。シグネチャ検証でリファクタ退行を検知
 - **バリデーションテストのエラー値検証** `[新観点 from PR#480]` — `assert error is not None` だけでなく `str(error) == ErrorConstants.XXX` で具体的な値を検証。別エラーへの退行を検知する
 - **統合テストのクエリバジェット統一** `[新観点 from PR#480]` — 一覧エンドポイントにクエリ上限があるなら詳細エンドポイントにも `django_assert_max_num_queries` を設定。N+1退行を検知するため全エンドポイントに統一して適用する
+- **mock の autospec 設定** `[新観点 from PR#496]` - テストで外部ライブラリ（boto3等）をmockする際に `autospec=True` が設定されているかチェックする。autospecにより実際のインターフェースと一致しない呼び出しを早期検出できる。
 
 ### Code Organization & DRY（詳細）
 

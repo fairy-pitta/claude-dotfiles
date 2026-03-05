@@ -203,6 +203,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **ローディング要素のアクセシビリティ** `[新観点 from PR#480]` — `v-if` で表示切替されるローディング要素に `role="status"` と `aria-live="polite"` があるか確認。スクリーンリーダー通知に必要
 - **route.queryの数値バリデーション** `[新観点 from PR#486]` — route.query由来の値をNumber()変換する際に、NaN・負数・小数・Infinityが混入しないかチェック。Number.isIntegerと正数チェックを追加する。
 - **composable refへのテンプレート直接代入禁止** `[新観点 from PR#486]` — composableが公開するrefにテンプレートから`.value =`で直接代入していないかチェック。メソッド経由で操作する。
+- **CSS progressive enhancement フォールバック** `[新観点 from PR#496]` - 新しいCSSプロパティ（`word-break: auto-phrase`等）使用時に非対応ブラウザでのレイアウト崩れがないかチェックする。`@supports` クエリや代替プロパティでフォールバックを提供しているか確認する。
 
 ### Test Quality（テストファイルが変更されている場合）
 
