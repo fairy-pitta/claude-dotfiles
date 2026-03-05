@@ -238,6 +238,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **APIエンドポイント定数化** `[新観点 from PR#486]` — fetch/axiosのURL文字列が直書きされていないかチェック。定数として抽出してDRY原則を維持する。
 - **dialog アクセシブル名の確認** `[新観点 from PR#497]` — `role="dialog"` または `role="alertdialog"` の要素が `aria-labelledby` か `aria-label` のいずれかを持つことを確認。両方 `undefined` の場合はスクリーンリーダーが認識できない。共通コンポーネントのデフォルト値設定が必要か確認する。
 - **Vue Transition + watch(flush:"post") でのフォーカスタイミング** `[新観点 from PR#497]` — Transition アニメーション中の watch コールバックでフォーカスを設定する場合、`nextTick + requestAnimationFrame` でラップしてレイアウト完了後に実行することを確認する。
+- **モーダル/ダイアログのフォーカスフォールバック** `[新観点 from PR#497]` — フォーカス可能要素が存在しない場合（hideCloseButton=true + slot 内に focusable 要素なし）でもモーダルにフォーカスが当たるよう、コンテナに `tabindex="-1"` を付与してフォールバックフォーカスが設定されているか確認する。
+- **watch の初期値対応（immediate または onMounted）** `[新観点 from PR#497]` — `watch(modelValue)` はデフォルトで変化時のみ動作するため、マウント時に既に `true` の場合はコールバックが実行されない。初期状態を考慮するなら `immediate: true` か `onMounted` でのフォールバック処理が必要か確認する。
 
 ---
 
