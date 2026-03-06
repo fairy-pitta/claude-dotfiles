@@ -29,6 +29,11 @@ echo "🔧 Copying hook scripts..."
 cp "$SCRIPT_DIR/scripts/"*.sh "$CLAUDE_DIR/scripts/"
 chmod +x "$CLAUDE_DIR/scripts/"*.sh
 
+# Copy statusline script
+echo "📊 Copying statusline script..."
+cp "$SCRIPT_DIR/scripts/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
+chmod +x "$CLAUDE_DIR/statusline-command.sh"
+
 # Copy custom skills
 echo "🎯 Copying custom skills..."
 for skill_dir in "$SCRIPT_DIR/skills"/*/; do
@@ -76,6 +81,7 @@ echo "Installed:"
 echo "  - Custom commands (9 commands)"
 echo "  - Custom skills (dotfiles/skills/)"
 echo "  - Hook scripts (auto-format, deny-check)"
+echo "  - Status line (3-line rate limit display)"
 echo "  - Superpowers skills (14 skills)"
 echo "  - MCP servers (Playwright, Serena)"
 echo ""
