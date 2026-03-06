@@ -112,6 +112,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **Domain層の純粋性** — Domain層（entities, repositories, enums）がDjango/DRFに依存していないか（`QuerySet`・`Model`・インフラ概念の混入禁止）
 - [ ] **DomainRepositoryがDTOに依存するのはNG** — `AuthUserPayload`等のPresentation/Application DTOをDomain層のRepositoryが返していないか。ドメインモデル/VOを返しUseCase側でDTO変換すること（→ `references/code-examples.md`）
 - [ ] **Transaction管理の配置** — `transaction.atomic()`がUseCase層でのみ管理されているか。Repository層でのトランザクション禁止
+- [ ] **Result型とtransaction.atomicの組み合わせ** `[新観点 from PR#510]` — Result型パターンでtransaction.atomic()を使う場合、エラーチェックがatomicブロック内にあるか確認する。Result型は例外を投げないため、atomicブロック外でのエラーチェックではロールバックされない。エラー時はRuntimeErrorをraiseしてatomicにrollbackさせる
 - [ ] **1 class = 1 file** — 各クラスが独自のファイルに配置されているか
 
 ### Type Safety
@@ -205,6 +206,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **Bulk操作** — 複数レコードの作成・更新時に`bulk_create()`/`bulk_update()`を使用しているか
 - **Admin list_displayでのN+1** — `list_display`に集計表示がある場合、`get_queryset()`で`annotate(Count(...))`しているか
 - **ページネーションの副キー** `[新観点 from PR#480]` — `order_by` が単一カラムの場合、同値タイブレーカー不在で重複・取りこぼしが起きる。PKを副キーに追加して安定ソートにする
+- **management commandでのDB側フィルタリング** `[新観点 from PR#510]` — management commandでも大量データの可能性を考慮し、DB側フィルタリング（Exists subquery等）を優先する。Python側でset差分を取る前に、SQLレベルで絞り込めないか検討する。iterator(chunk_size)で逐次取得してメモリ圧迫を回避する
 
 ### Test Quality（詳細）
 

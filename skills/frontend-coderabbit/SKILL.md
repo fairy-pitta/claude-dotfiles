@@ -181,11 +181,14 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 ### State Management（詳細）
 
 - **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
+- **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。
+- **module-level singletonのページ遷移時リセット** `[新観点 from PR#510]` — module-level singleton（composable内のmodule-scope ref）の状態がページ遷移時に適切にリセットされるか確認する。onUnmountedでのクリーンアップを忘れないこと。
 
 ### Error Handling（詳細）
 
 - **非対称なdisabled状態** — 同一フローで複数ボタンがある場合、ローディングガードが全ボタンに対称に付いているか（→ `references/code-examples.md`）
 - **try-catch漏れ** — 非同期処理に適切なエラーハンドリングがあるか。エラーがサイレントに握りつぶされていないか
+- **localStorage.getItem/setItemのtry-catch** `[新観点 from PR#510]` — localStorage.getItem/setItemには必ずtry-catchを付ける。同一機能内で一部だけガードされている不整合がないか確認する。
 - **entities/api層のmutationFnでAxiosError正規化** `[新観点 from PR#437]` — `useMutation` の `mutationFn` が try/catch なしで httpClient を直接呼び出すと、AxiosError（"Request failed with status code 500" 等）がそのままページ層に伝播する。全 mutationFn に try/catch を入れ、`isAxiosError(error)` で判定後 `toAppError(error).message` で正規化してから throw すること
 - **repositoryのcatchブロックでAxiosErrorを素通りさせない** `[新観点 from PR#437]` — repository の catch で特定条件（メールエラー等）のみ変換し、残りを `throw error` で素通りさせていないか確認する。`throw error` が残っている場合は AxiosError を `toAppError` で変換してから throw すること
 - **ユーザー向けエラーメッセージ** — エラー時にユーザーへの通知（toast等）が適切に行われているか
@@ -204,6 +207,9 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **route.queryの数値バリデーション** `[新観点 from PR#486]` — route.query由来の値をNumber()変換する際に、NaN・負数・小数・Infinityが混入しないかチェック。Number.isIntegerと正数チェックを追加する。
 - **composable refへのテンプレート直接代入禁止** `[新観点 from PR#486]` — composableが公開するrefにテンプレートから`.value =`で直接代入していないかチェック。メソッド経由で操作する。
 - **CSS progressive enhancement フォールバック** `[新観点 from PR#496]` - 新しいCSSプロパティ（`word-break: auto-phrase`等）使用時に非対応ブラウザでのレイアウト崩れがないかチェックする。`@supports` クエリや代替プロパティでフォールバックを提供しているか確認する。
+- **ドラッグ操作のviewport境界チェック** `[新観点 from PR#510]` — ドラッグ操作でDOM要素の位置を更新する場合、viewport境界を超えないようクランプ処理があるか確認する。EDGE_MARGINなどの定数を使い、画面外にパネルが出ないよう制約する。
+- **mousedownイベントの左クリック限定** `[新観点 from PR#510]` — mousedownイベントハンドラではe.button === 0（左クリック）のガードを入れる。右クリック・中クリックでのドラッグ開始を防止する。
+- **レスポンシブ時のリサイズUI非表示** `[新観点 from PR#510]` — レスポンシブ対応のmedia queryでサイズを固定する場合、リサイズ関連のUI要素（ハンドル等）も非表示にする。display: noneで操作不能にすること。
 
 ### Test Quality（テストファイルが変更されている場合）
 
