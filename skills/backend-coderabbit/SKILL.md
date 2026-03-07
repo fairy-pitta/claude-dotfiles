@@ -13,9 +13,9 @@ Django + Clean Architecture/DDDのバックエンドコードをCodeRabbitスタ
 
 **コード例示:** `references/code-examples.md` を参照
 
-## Language
+## Format & Severity
 
-**日本語で回答すること。**タイトルに【必須修正】【要改善】【任意】等のラベルを使用する。
+`references/review-format.md` を参照（Language, Comment Structure, Severity, Category Labels, Summary Template）。
 
 ## Review Personality
 
@@ -23,37 +23,6 @@ Django + Clean Architecture/DDDのバックエンドコードをCodeRabbitスタ
 - 重要度を必ず明記し、actionableな修正案（diffつき）を必ず提示
 - ファイルパスと行番号を参照
 - `<details>` collapsibleで修正案を展開
-
-## Comment Structure
-
-```
-_<category>_ | _<severity>_
-
-**<title>**
-
-<explanation>
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-<before/after diff>
-```
-</details>
-```
-
-## Severity Indicators
-
-- **🔴 Critical** - マージ前必須修正（セキュリティ、データ損失、クラッシュ）
-- **🟠 Major** - 修正推奨（機能影響、アーキテクチャ違反、型安全性）
-- **🟡 Minor** - 改善推奨（リファクタ、軽微な最適化）
-- **🔵 Trivial** - コードスタイル（未使用import、フォーマット）
-
-## Category Labels
-
-- `_⚠️ Potential issue_` - バグ・ロジック問題
-- `_🧹 Nitpick_` - コード品質・スタイル
-- `_🛠️ Refactor suggestion_` - アーキテクチャ改善
 
 ---
 
@@ -77,30 +46,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 ### 4. Generate Summary
 
-```markdown
-## Review Summary
-
-**Actionable comments posted: <N>**
-
-### Severity Distribution
-- 🔴 Critical: <N>
-- 🟠 Major: <N>
-- 🟡 Minor: <N>
-- 🔵 Trivial: <N>
-
-### Key Findings
-
-**Architecture:** ...
-**Type Safety:** ...
-**Security:** ...
-**Performance:** ...
-**Test Quality:** ...
-
-### Recommendations
-1. **マージ前必須修正:** [Critical/Major]
-2. **修正推奨:** [Minor]
-3. **任意改善:** [Trivial]
-```
+`references/review-format.md` の Review Summary Template に従う。
 
 ---
 
@@ -144,7 +90,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - [ ] **N+1クエリ** — ループ内でDBクエリを実行していないか。`select_related()`/`prefetch_related()`の適用漏れ
 - [ ] **`SELECT *`禁止** — `select_related(...).get()`は全カラム取得になる。`.only()`/`.values()`で絞り込む（→ `references/code-examples.md`）
-- [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT *禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
+- [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT \*禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
 - [ ] **QuerySetのorder_by明示** `[新観点 from PR#472]` — Django の QuerySet で `.all()` を使用する際、`order_by` を指定しないとDB依存で順序が揺れる。APIレスポンスの安定性・テスト再現性のため、`order_by` は常に明示すべき
 
 ### Test Quality（テストファイルが変更されている場合）
@@ -184,10 +130,10 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - **バリデーション実行順序** — 削除・更新処理の前にバリデーションが実行されているか。副作用の後にチェックをしていないか
 - **正規化後の再バリデーション** — 入力値を正規化・変換した後に結果が有効か再検証しているか
-- **validate_\<field\>サニタイズ後の空文字チェック** `[新観点 from PR#520]` — validate_\<field\>メソッドで制御文字除去・trim等のサニタイズを行う場合、サニタイズ後の値が空文字になるケースを考慮しているか確認する。DRFのallow_blank/requiredチェックはvalidate_\<field\>より先に実行されるため、サニタイズ後の空文字はDRFでは検出できない。明示的な空文字チェックとValidationErrorの発生が必要
+- **validate\_\<field\>サニタイズ後の空文字チェック** `[新観点 from PR#520]` — validate*\<field\>メソッドで制御文字除去・trim等のサニタイズを行う場合、サニタイズ後の値が空文字になるケースを考慮しているか確認する。DRFのallow_blank/requiredチェックはvalidate*\<field\>より先に実行されるため、サニタイズ後の空文字はDRFでは検出できない。明示的な空文字チェックとValidationErrorの発生が必要
 - **年の範囲チェック** — `year <= 0`のみで1900-9999の範囲チェックが漏れていないか（→ `references/code-examples.md`）
 - **frozen dataclassの`__post_init__`バリデーション** — 不正な値でインスタンスが作られないよう、`item_name`の非空・`year`の範囲等を`__post_init__`内で`ValidationError`を使って検証（→ `references/code-examples.md`）
-- **frozen dataclass不変条件の網羅性** `[新観点 from PR#469]` — __post_init__で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
+- **frozen dataclass不変条件の網羅性** `[新観点 from PR#469]` — **post_init**で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
 - **エンティティ不変条件の空白チェック** `[新観点 from PR#480]` — ドメインエンティティの `__post_init__` で `not self.field` ではなく `not self.field.strip()` を使っているか確認。空白のみ入力を通過させるバグを防ぐ。エラーメッセージが定数化されているかも併せて確認
 - **`from_string()`/enum変換の入力型チェック** — `isinstance(value, str)` チェックがないと`int`や`None`で`AttributeError`になる（→ `references/code-examples.md`）
 - **`reconstruct()`でのUUID型不変条件の未検証** — `isinstance(field, UUID)` チェックがないとDB破損データがDomainに混入する

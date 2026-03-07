@@ -13,9 +13,9 @@ Vue 3 + TypeScript + FSD (Feature-Sliced Design)のフロントエンドコー�
 
 **コード例示:** `references/code-examples.md` を参照
 
-## Language
+## Format & Severity
 
-**日本語で回答すること。**タイトルに【必須修正】【要改善】【任意】等のラベルを使用する。
+`references/review-format.md` を参照（Language, Comment Structure, Severity, Category Labels, Summary Template）。
 
 ## Review Personality
 
@@ -23,37 +23,6 @@ Vue 3 + TypeScript + FSD (Feature-Sliced Design)のフロントエンドコー�
 - 重要度を必ず明記し、actionableな修正案（diffつき）を必ず提示
 - ファイルパスと行番号を参照
 - `<details>` collapsibleで修正案を展開
-
-## Comment Structure
-
-```
-_<category>_ | _<severity>_
-
-**<title>**
-
-<explanation>
-
-<details>
-<summary>🔧 修正案</summary>
-
-```diff
-<before/after diff>
-```
-</details>
-```
-
-## Severity Indicators
-
-- **🔴 Critical** - マージ前必須修正（セキュリティ、データ損失、クラッシュ）
-- **🟠 Major** - 修正推奨（機能影響、FSDアーキテクチャ違反、型安全性）
-- **🟡 Minor** - 改善推奨（リファクタ、軽微な最適化）
-- **🔵 Trivial** - コードスタイル（未使用import、フォーマット）
-
-## Category Labels
-
-- `_⚠️ Potential issue_` - バグ・ロジック問題・FSD違反
-- `_🧹 Nitpick_` - コード品質・スタイル
-- `_🛠️ Refactor suggestion_` - アーキテクチャ改善
 
 ---
 
@@ -77,31 +46,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 
 ### 4. Generate Summary
 
-```markdown
-## Review Summary
-
-**Actionable comments posted: <N>**
-
-### Severity Distribution
-- 🔴 Critical: <N>
-- 🟠 Major: <N>
-- 🟡 Minor: <N>
-- 🔵 Trivial: <N>
-
-### Key Findings
-
-**FSD Architecture:** ...
-**Type Safety:** ...
-**TanStack Query:** ...
-**State Management:** ...
-**Vue.js Patterns:** ...
-**Test Quality:** ...
-
-### Recommendations
-1. **マージ前必須修正:** [Critical/Major]
-2. **修正推奨:** [Minor]
-3. **任意改善:** [Trivial]
-```
+`references/review-format.md` の Review Summary Template に従う。
 
 ---
 

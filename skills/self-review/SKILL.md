@@ -28,11 +28,11 @@ description: sora-review → 修正 → backend/frontend-coderabbit → 修正 �
 git diff --name-only origin/dev...HEAD
 ```
 
-| 変更ファイル | 実行するステップ |
-|---|---|
-| `backend/` のみ | sora-review → backend-coderabbit → codex review CLI → coderabbit review CLI |
-| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI |
-| 両方 | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI |
+| 変更ファイル     | 実行するステップ                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `backend/` のみ  | sora-review → backend-coderabbit → codex review CLI → coderabbit review CLI                                               |
+| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI                      |
+| 両方             | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
 
@@ -87,6 +87,7 @@ sora-review: <N>件
 #### A-2. 修正
 
 優先度順に修正を実施する:
+
 1. 🔴 Critical / 【必須修正】
 2. 🟠 Major / 【要改善】
 3. 🟡 Minor
@@ -237,7 +238,8 @@ A-3 と同じコマンドで全テストを実行する。
 coderabbit review --plain --base dev \
   -c "$CLAUDE_MD" \
   $CR_YAML_ARG \
-  -c "$SKILLS_DIR/coderabbit-review/SKILL.md"
+  -c "$SKILLS_DIR/references/review-format.md" \
+  -c "$SKILLS_DIR/references/review-process.md"
 ```
 
 出力を読んで指摘事項を抽出・件数を記録:

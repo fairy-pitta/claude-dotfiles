@@ -1,22 +1,31 @@
 # Review Loop
 
-coderabbit-reviewスキルを繰り返し実行し、指摘箇所を全て解消するまでループするスキル。
+backend-coderabbit / frontend-coderabbit スキルを繰り返し実行し、指摘箇所を全て解消するまでループするスキル。
 
 ## Process
 
+### 0. レビュースキルの決定
+
+```bash
+git diff --name-only origin/dev...HEAD
+```
+
+| 変更ファイル     | 使用するスキル                   |
+| ---------------- | -------------------------------- |
+| `backend/` のみ  | `/backend-coderabbit`            |
+| `frontend/` のみ | `/frontend-coderabbit`           |
+| 両方             | 両スキルを各ファイルに対して適用 |
+
 ### 1. 初回レビュー実行
 
-**IMPORTANT: 必ず `/coderabbit-review` スキルを呼び出して実行すること。**
-
-```
-/coderabbit-review
-```
+上記で決定したスキルを呼び出して実行する。
 
 レビュー結果を確認し、指摘事項を収集する。
 
 ### 2. 指摘事項の分析
 
 レビュー結果から以下を抽出：
+
 - 🔴 Critical（必須修正）
 - 🟠 Major（要修正）
 - 🟡 Minor（改善推奨）
@@ -33,6 +42,7 @@ coderabbit-reviewスキルを繰り返し実行し、指摘箇所を全て解消
 3. 修正内容を簡潔に記録
 
 **修正時の注意:**
+
 - Critical/Majorは必ず修正
 - Minor/Trivialは可能な限り修正（明らかに不要な場合はスキップ可）
 - 修正案がある場合はそれに従う
@@ -41,11 +51,7 @@ coderabbit-reviewスキルを繰り返し実行し、指摘箇所を全て解消
 
 ### 4. 再レビュー
 
-修正完了後、再度coderabbit-reviewスキルを実行：
-
-```
-/coderabbit-review
-```
+修正完了後、再度同じスキルを実行。
 
 ### 5. ループ判定
 
@@ -65,12 +71,14 @@ coderabbit-reviewスキルを繰り返し実行し、指摘箇所を全て解消
 ## Loop <N> Results
 
 **レビュー指摘数:**
+
 - 🔴 Critical: <N>
 - 🟠 Major: <N>
 - 🟡 Minor: <N>
 - 🔵 Trivial: <N>
 
 **修正した項目:**
+
 1. <ファイル名>: <修正内容>
 2. ...
 
@@ -86,6 +94,7 @@ coderabbit-reviewスキルを繰り返し実行し、指摘箇所を全て解消
 **修正した指摘総数:** <N>
 
 **修正サマリー:**
+
 - <カテゴリ>: <N>件修正
 - ...
 
@@ -94,8 +103,8 @@ coderabbit-reviewスキルを繰り返し実行し、指摘箇所を全て解消
 
 ## Critical Constraints
 
-- **毎回必ず `/coderabbit-review` スキルを呼び出すこと**（直接レビューを行わない）
-- 修正はcoderabbit-reviewの指摘に基づくこと
+- **毎回必ず backend-coderabbit / frontend-coderabbit スキルを呼び出すこと**（直接レビューを行わない）
+- 修正はスキルの指摘に基づくこと
 - 新しい問題を導入しないよう注意
 - 最大20回のループで終了
 - 各ループの結果を明確に報告
