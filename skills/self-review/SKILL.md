@@ -242,14 +242,22 @@ A-3 と同じコマンドで全テストを実行する。
 #### E-1. coderabbit review 実行
 
 ```bash
-coderabbit review --plain --base dev \
+CR_OUTPUT=$(coderabbit review --plain --base dev \
   -c "$CLAUDE_MD" \
   $CR_YAML_ARG \
   -c "$SKILLS_DIR/references/review-format.md" \
-  -c "$SKILLS_DIR/references/review-process.md"
+  -c "$SKILLS_DIR/references/review-process.md" 2>&1)
+CR_EXIT=$?
+echo "$CR_OUTPUT"
 ```
 
-出力を読んで指摘事項を抽出・件数を記録:
+**レートリミット判定:** 出力に `rate limit` / `429` / `quota` / `too many requests` 等が含まれる場合、またはexit codeが非0でレートリミットを示す場合は、待機せず即スキップする。
+
+```
+coderabbit review: ⏭️ レートリミットのためスキップ
+```
+
+レートリミット以外の正常出力の場合、指摘事項を抽出・件数を記録:
 
 ```
 coderabbit review: <N>件
@@ -282,10 +290,10 @@ A-3 と同じコマンドで全テストを実行する。
 [STEP B] frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP C] frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP D] codex review:          <N>件 / ✅ 指摘なし
-[STEP E] coderabbit review:     <N>件 / ✅ 指摘なし
+[STEP E] coderabbit review:     <N>件 / ✅ 指摘なし / ⏭️ レートリミットスキップ
 ```
 
-**全ステップが ✅ 指摘なし → ループ終了（完了レポートへ）**
+**全ステップが ✅ 指摘なし（⏭️ スキップ含む） → ループ終了（完了レポートへ）**
 **1件以上の指摘あり → Round <N+1> へ戻る**
 
 ---
@@ -302,7 +310,7 @@ A-3 と同じコマンドで全テストを実行する。
   [STEP B] frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
   [STEP C] frontend-architecture: ✅ 指摘なし  （該当する場合）
   [STEP D] codex review:          ✅ 指摘なし
-  [STEP E] coderabbit review:     ✅ 指摘なし
+  [STEP E] coderabbit review:     ✅ 指摘なし / ⏭️ レートリミットスキップ
 
 # プロンプトファイルのクリーンアップ
 rm -f "$SORA_PROMPT"
