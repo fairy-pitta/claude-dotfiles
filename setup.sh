@@ -22,7 +22,11 @@ cp "$SCRIPT_DIR/settings.local.json" "$CLAUDE_DIR/"
 
 # Copy commands
 echo "📝 Copying custom commands..."
-cp "$SCRIPT_DIR/commands/"*.md "$CLAUDE_DIR/commands/"
+if compgen -G "$SCRIPT_DIR/commands/"*.md > /dev/null 2>&1; then
+  cp "$SCRIPT_DIR/commands/"*.md "$CLAUDE_DIR/commands/"
+else
+  echo "  - No custom commands found, skipping"
+fi
 
 # Copy scripts and make executable
 echo "🔧 Copying hook scripts..."
