@@ -183,6 +183,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
 - **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。
 - **module-level singletonのページ遷移時リセット** `[新観点 from PR#510]` — module-level singleton（composable内のmodule-scope ref）の状態がページ遷移時に適切にリセットされるか確認する。onUnmountedでのクリーンアップを忘れないこと。
+- **モジュールレベルキャッシュの認証境界ライフサイクル** `[新観点 from PR#523]` — メモリキャッシュ（module-level変数）を導入した際、ログアウト・セッション切れ・401/403エラー等の認証境界で適切にクリアされるかチェックする。キャッシュ追加時に無効化ポイントの洗い出しをセットで行わないと、古い値が残り続けてセキュリティ・機能バグになる。`invalidate`関数をexportし、認証境界で呼び出すこと
 
 ### Error Handling（詳細）
 
@@ -230,6 +231,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **XSS対策** — `v-html`の使用時にサニタイズされているか。ユーザー入力を直接DOMに渡していないか
 - **依存ライブラリの脆弱性** — 既知の脆弱性を持つライブラリ（例: `xlsx`）を使用していないか
 - **機密情報のログ出力** — `console.*`等でAPIキー・トークン・パスワードを出力していないか
+- **クロスオリジン環境でのCookie読み取り安全性** `[新観点 from PR#523]` — `document.cookie`は現在のoriginのCookieのみ返すため、APIが別originの場合にそのCookie値をCSRFトークンとして信頼してはいけない。Cookie読み取りにはAPI originと`window.location.origin`の一致チェックをセットで実装すること
 
 ### Code Organization & DRY（詳細）
 
