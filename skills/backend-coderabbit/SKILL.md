@@ -121,6 +121,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **Result型タプルアンパック** — `result, error = usecase.execute()`の形式が必須。`.error`属性アクセス禁止
 - [ ] **`_`でエラー無視はNG** — `value, _ = usecase.execute()`でエラーを捨てると認可チェックが消える。必ずエラーを変数に受けてチェック（→ `references/code-examples.md`）
 - [ ] **Enum必須** — ステータス値・カテゴリ値に文字列リテラル禁止。`TextChoices`/`IntegerChoices`を使用
+- [ ] **エラー型判定** `[新観点 from PR#522]` — Result型のエラーを文字列比較で分岐していないか確認する。UseCase層で例外型を分類している場合はisinstanceで型判定すべき。文字列比較はメッセージ定数の変更で分岐が壊れるリスクがある
 - [ ] **bool⊂int型チェック** `[新観点 from PR#469]` — isinstance(x, int)によるバリデーション箇所でboolが通過しないか確認する。Pythonではboolはintのサブクラスのため、isinstance(True, int)がTrueを返す。intチェックの前にisinstance(x, bool)で排除する
 
 ### Security & Authorization
