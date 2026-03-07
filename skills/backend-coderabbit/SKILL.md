@@ -137,6 +137,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **`logger`/`print`禁止** — `logger`・`print`（マイグレーションbackward含む）の使用禁止
 - [ ] **ユーザー向け/内部向けメッセージの混在チェック** `[新観点 from PR#486]` — Msg/InternalMsgの分離が不十分だとAPIレスポンスに内部メッセージが露出するリスクがある。メッセージ定数を追加する際、用途（ユーザー向け/内部向け）を確認して適切なクラスに配置すること
 - [ ] **定数ファイルの責務分離** `[新観点 from PR#486]` — メッセージ定数ファイルに設定値（TTL, 閾値等）を混在させていないか確認する。文言定数と運用設定値は別ファイルに分離すること。混在すると責務が曖昧になり保守性が低下する
+- [ ] **DRFフィールド制約のエラーメッセージ定数化** `[新観点 from PR#520]` — DRFフィールドにmax_length/min_length/min_value/max_value等の制約を追加する際、error_messagesもセットでMsg定数化されているか確認する。DRFビルトインメッセージはプロジェクトの「エラーメッセージ定数化」ルールの対象外と見落としやすい。error_messagesパラメータで明示的に定数を指定すること
 
 ### Database Performance
 
@@ -182,6 +183,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - **バリデーション実行順序** — 削除・更新処理の前にバリデーションが実行されているか。副作用の後にチェックをしていないか
 - **正規化後の再バリデーション** — 入力値を正規化・変換した後に結果が有効か再検証しているか
+- **validate_\<field\>サニタイズ後の空文字チェック** `[新観点 from PR#520]` — validate_\<field\>メソッドで制御文字除去・trim等のサニタイズを行う場合、サニタイズ後の値が空文字になるケースを考慮しているか確認する。DRFのallow_blank/requiredチェックはvalidate_\<field\>より先に実行されるため、サニタイズ後の空文字はDRFでは検出できない。明示的な空文字チェックとValidationErrorの発生が必要
 - **年の範囲チェック** — `year <= 0`のみで1900-9999の範囲チェックが漏れていないか（→ `references/code-examples.md`）
 - **frozen dataclassの`__post_init__`バリデーション** — 不正な値でインスタンスが作られないよう、`item_name`の非空・`year`の範囲等を`__post_init__`内で`ValidationError`を使って検証（→ `references/code-examples.md`）
 - **frozen dataclass不変条件の網羅性** `[新観点 from PR#469]` — __post_init__で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
