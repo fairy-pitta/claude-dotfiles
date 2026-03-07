@@ -42,11 +42,18 @@ git diff --name-only origin/dev...HEAD
 CLAUDE_MD="/Users/wao_singapore/forval-crossgear/CLAUDE.md"
 SKILLS_DIR="$HOME/.claude/skills"
 
-# STEP D用: sora スタイルプロンプト
+# STEP D用: sora スタイルプロンプト + plan
 SORA_PROMPT=$(mktemp /tmp/self-review-sora.XXXXXX)
 echo "# Project Rules (CLAUDE.md)" > "$SORA_PROMPT"
 cat "$CLAUDE_MD" >> "$SORA_PROMPT"
 echo -e "\n---\n" >> "$SORA_PROMPT"
+# planファイルがあれば含める（full-cycle経由の場合など）
+PLAN_FILE=".claude/plan.md"
+if [ -f "$PLAN_FILE" ]; then
+  echo "# Implementation Plan" >> "$SORA_PROMPT"
+  cat "$PLAN_FILE" >> "$SORA_PROMPT"
+  echo -e "\n---\n" >> "$SORA_PROMPT"
+fi
 cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$SORA_PROMPT"
 
 # STEP E用: coderabbit.yaml があれば渡す
