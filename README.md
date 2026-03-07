@@ -1,113 +1,105 @@
 # Claude Code Dotfiles
 
-My Claude Code configuration for portable setup across machines.
+Claude Code の設定・スキル・スクリプトをポータブルに管理するリポジトリ。
 
-## Quick Setup
+## セットアップ
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-dotfiles.git ~/claude-dotfiles
-cd ~/claude-dotfiles
+git clone https://github.com/fairy-pitta/claude-dotfiles.git ~/.claude/claude-dotfiles
+cd ~/.claude/claude-dotfiles
 ./setup.sh
 ```
 
-## What's Included
+## 構成
 
-### Custom Commands (`commands/`)
+```
+.
+├── CLAUDE.md                  # グローバルルール（全セッション共通）
+├── settings.json              # ステータスライン・プラグイン設定
+├── settings.local.json        # パーミッション設定
+├── mcp-servers.json           # MCPサーバー定義
+├── statusline-command.sh      # ステータスライン表示スクリプト
+├── setup.sh                   # セットアップスクリプト
+├── scripts/                   # フックスクリプト
+│   ├── auto-format.sh         # 編集後の自動フォーマット（Prettier/Black）
+│   ├── deny-check.sh          # 危険コマンドのブロック
+│   └── statusline-command.sh  # ステータスライン
+└── skills/                    # カスタムスキル（スラッシュコマンド）
+    └── references/            # スキル間共有リファレンス
+```
 
-**Sub-Agent Commands:**
-| Command | Description |
-|---------|-------------|
-| `/code-simplifier` | Simplify code (sub-agent) |
-| `/verify-app` | E2E verification (sub-agent) |
-| `/deep-research` | Deep research (sub-agent) |
-| `/security-check` | Security analysis (sub-agent) |
+## スキル一覧
 
-**GitHub Workflow Commands:**
-| Command | Description |
-|---------|-------------|
-| `/fix-github-issue` | Analyze and fix GitHub issues |
-| `/create-pr` | Create pull request (template-aware) |
-| `/create-plan` | Create implementation plan & GitHub Issue |
-| `/exec-issue` | Execute task from GitHub Issue |
-| `/read-issue` | Read issue and create implementation plan |
+### コードレビュー系
 
-**Code Review Commands:**
-| Command | Description |
-|---------|-------------|
-| `/review-code` | Code review with suggestions |
-| `/read-pr-comments` | Read unresolved PR review comments |
-| `/fix-review` | Fix review points (single pass) |
-| `/fix-review-loop` | Fix review points (continuous loop) |
-| `/resolve-comments` | Resolve PR review threads |
+| コマンド               | 説明                                                        |
+| ---------------------- | ----------------------------------------------------------- |
+| `/backend-coderabbit`  | Backend専用レビュー（Django/DDD/Clean Architecture）        |
+| `/frontend-coderabbit` | Frontend専用レビュー（Vue 3/TypeScript/FSD/TanStack Query） |
+| `/sora-review`         | カジュアルスタイルのコードレビュー（lits0ra風）             |
+| `/reviewer`            | レビュー実行後、PRにインラインコメントとして投稿            |
+| `/self-review`         | 全レビュースキルを順番に実行し、指摘ゼロまでループ          |
+| `/review-loop`         | backend/frontend-coderabbit を繰り返し実行し全指摘を解消    |
+| `/codex-review`        | Codex CLIによる非インタラクティブレビュー                   |
 
-**Git Commands:**
-| Command | Description |
-|---------|-------------|
-| `/commit-push` | Strategic commit & push (squash/amend/new) |
-| `/create-worktree` | Create isolated git worktree |
+### PR・GitHub連携系
 
-**Utility Commands:**
-| Command | Description |
-|---------|-------------|
-| `/explain` | Explain code or concepts |
-| `/refactor` | Refactor code |
-| `/check-library` | Look up library documentation |
+| コマンド               | 説明                           |
+| ---------------------- | ------------------------------ |
+| `/create-pr`           | PRを作成                       |
+| `/address-pr-comments` | PRの未解決コメントを取得し対応 |
+| `/read-pr-comments`    | PRの未解決コメントを読み取り   |
+| `/resolve-comments`    | PRレビュースレッドを解決       |
+| `/fix-review`          | レビュー指摘を修正（1回）      |
+| `/fix-and-learn`       | PRコメントを修正しつつ学習     |
 
-### Hook Scripts (`scripts/`)
+### Git操作系
 
-- `auto-format.sh` - Auto-format files after edit (Prettier/Black)
-- `deny-check.sh` - Block dangerous commands
+| コマンド           | 説明                                   |
+| ------------------ | -------------------------------------- |
+| `/commit-push`     | コミット＆プッシュ（squash/amend/new） |
+| `/push`            | 現在のブランチをリモートにプッシュ     |
+| `/create-worktree` | Git worktreeを作成                     |
 
-### Permissions (`settings.local.json`)
+### 開発サイクル系
 
-**Allowed:**
-- File editing, git operations, npm commands
-- Basic file operations (ls, mkdir, touch, open)
+| コマンド                 | 説明                                                            |
+| ------------------------ | --------------------------------------------------------------- |
+| `/full-cycle`            | Plan作成→Codex検証→実装→レビュー→修正→コミット→PR作成を一気通貫 |
+| `/frontend-architecture` | CODING_STANDARDS.md の全項目を並列チェック                      |
+| `/process-scans`         | スキャンPDFの分類・整理ワークフロー                             |
 
-**Denied:**
-- `rm -rf /*` - Dangerous deletion
-- `chmod 777` - Insecure permissions
-- `git config --global` - Global config changes
-- `git push --force` - Force push
+### 共有リファレンス (`references/`)
 
-### MCP Servers
+| ファイル            | 内容                                                 |
+| ------------------- | ---------------------------------------------------- |
+| `review-format.md`  | 重要度・カテゴリ・コメント構造・サマリーテンプレート |
+| `review-process.md` | レビュープロセス（ファイル分類・手順）               |
+| `code-examples.md`  | backend/frontend共通のコード例                       |
 
-- **Playwright** - Browser automation
-- **Serena** - Semantic code search
+## CLAUDE.md グローバルルール
 
-### Skills
+全セッションに適用されるルール:
 
-- **Superpowers** (14 skills) - TDD, debugging, planning, code review workflows
+- **言語**: 業務プロジェクト→日本語 / OSSプロジェクト→英語
+- **実行スタイル**: 途中で止まらず最後まで実行
+- **コミットメッセージ**: `type: 具体的な説明`（抽象的な表現禁止）
+- **テスト命名**: `test_<動作>_<条件>_<期待結果>`
+- **Git**: main/masterへの直接コミット禁止
 
-## Prerequisites
+## MCPサーバー
+
+- **Playwright** — ブラウザ自動操作
+- **Serena** — セマンティックコード検索
+
+## パーミッション設定
+
+**許可:** ファイル編集、Git操作、npm/pnpmコマンド、基本操作
+
+**拒否:** `rm -rf /*`、`chmod 777`、`git config --global`、`git push --force`
+
+## 前提条件
 
 - Node.js 18+
-- [uv](https://github.com/astral-sh/uv) (for Serena MCP)
+- [uv](https://github.com/astral-sh/uv)（Serena MCP用）
 - Claude Code (`npm install -g @anthropic-ai/claude-code`)
-
-## Manual Installation
-
-If you prefer manual setup:
-
-```bash
-# Copy configs
-cp settings.local.json ~/.claude/
-cp commands/*.md ~/.claude/commands/
-cp scripts/*.sh ~/.claude/scripts/
-chmod +x ~/.claude/scripts/*.sh
-
-# Install Superpowers
-git clone https://github.com/obra/superpowers.git ~/.claude/skills/superpowers
-
-# Add MCP servers
-claude mcp add playwright -- npx @playwright/mcp@latest
-claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code
-```
-
-## Updating
-
-```bash
-cd ~/claude-dotfiles
-git pull
-./setup.sh
-```
