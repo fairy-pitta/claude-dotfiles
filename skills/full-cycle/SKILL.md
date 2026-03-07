@@ -1,14 +1,14 @@
 # Full Cycle
 
-End-to-end implementation cycle: Plan execution -> Self-review -> Fix -> Commit -> Push -> PR creation.
+End-to-end implementation cycle: Plan creation (with Codex validation) -> Plan execution -> Self-review -> Fix -> Commit -> Push -> PR creation.
 
 Context: $ARGUMENTS
 
 ## Overview
 
-This skill orchestrates the complete development cycle from plan execution to PR creation. It chains existing skills together so you don't have to invoke them manually.
+This skill orchestrates the complete development cycle from planning through to PR creation. It chains existing skills together so you don't have to invoke them manually.
 
-**Announce at start:** "full-cycle を開始します。Plan実行 -> Review -> Fix -> Commit -> Push -> PR作成 を自動で回します。"
+**Announce at start:** "full-cycle を開始します。Plan作成(Codex検証) -> Plan実行 -> Review -> Fix -> Commit -> Push -> PR作成 を自動で回します。"
 
 ## Context Management
 
@@ -16,14 +16,85 @@ This skill orchestrates the complete development cycle from plan execution to PR
 
 ---
 
-## Phase 1: Plan Execution
+## Phase 0: Plan Creation & Codex Validation
 
-### 1-1. Determine the plan
+### 0-1. Gather requirements
 
 - If `$ARGUMENTS` contains a GitHub issue number/URL: fetch it with `gh issue view`
-- If `$ARGUMENTS` contains a plan file path: read the plan file
-- If `$ARGUMENTS` contains inline instructions: use them as the plan
-- If `$ARGUMENTS` is empty: check if a plan file exists in the current directory (e.g., `plan.md`, `PLAN.md`, `plan/`)
+- If `$ARGUMENTS` contains inline instructions: use them as requirements
+- If `$ARGUMENTS` is empty: ask the user what to build
+
+### 0-2. Enter plan mode and create the plan
+
+Enter plan mode. Explore the codebase to understand:
+
+- Existing architecture and patterns
+- Related files that will need changes
+- Test structure and conventions
+
+Write a detailed implementation plan covering:
+
+- **Goal**: What we're building/fixing and why
+- **Phases**: Ordered steps with specific file paths and code changes
+- **Testing strategy**: What tests to add/modify
+- **Verification**: How to confirm each phase works
+
+Save the plan to `.claude/plan.md` in the project root.
+
+### 0-3. Codex review loop
+
+Submit the plan to Codex for review. Loop until Codex approves.
+
+```bash
+# Build the prompt with project context
+CLAUDE_MD="$(pwd)/CLAUDE.md"
+PLAN_FILE=".claude/plan.md"
+
+PROMPT=$(mktemp /tmp/full-cycle-plan-review.XXXXXX)
+echo "# Project Rules" > "$PROMPT"
+[ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+echo -e "\n---\n# Implementation Plan\n" >> "$PROMPT"
+cat "$PLAN_FILE" >> "$PROMPT"
+echo -e "\n---\n" >> "$PROMPT"
+cat << 'REVIEW_INSTRUCTIONS' >> "$PROMPT"
+Review this implementation plan. Check for:
+1. Architectural correctness (follows project patterns and conventions)
+2. Completeness (no missing steps, edge cases considered)
+3. Ordering (dependencies between steps are respected)
+4. Testing coverage (adequate tests planned)
+5. Risk areas (potential breaking changes, migration issues)
+
+If the plan is good, respond with exactly: LGTM
+If there are issues, list them concisely.
+REVIEW_INSTRUCTIONS
+
+codex review --base dev - < "$PROMPT"
+rm -f "$PROMPT"
+```
+
+**Parse the output:**
+
+- If Codex responds with `LGTM` (or no actionable issues): proceed to Phase 1
+- If Codex has findings: revise the plan to address them, then re-submit
+- **Max 3 rounds.** If Codex still has issues after 3 rounds, show the remaining concerns to the user and ask whether to proceed anyway
+
+### 0-4. Plan approved
+
+```
+=== Phase 0: Plan Approved ===
+Codex review rounds: <N>
+Plan: .claude/plan.md
+```
+
+#### Context check -> `/compact` if >= 80%
+
+---
+
+## Phase 1: Plan Execution
+
+### 1-1. Read the approved plan
+
+Read `.claude/plan.md` and execute it.
 
 ### 1-2. Execute the plan
 
@@ -42,6 +113,12 @@ Tests: PASS / FAIL
 ```
 
 If tests FAIL, fix before proceeding.
+
+### 1-4. Clean up plan file
+
+```bash
+rm -f .claude/plan.md
+```
 
 #### Context check -> `/compact` if >= 80%
 
