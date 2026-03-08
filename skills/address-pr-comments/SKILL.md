@@ -61,7 +61,7 @@ gh api graphql --paginate \
               isResolved
               path
               line
-              comments(first: 1) {
+              comments(first: 20) {
                 nodes {
                   databaseId
                   author { login }
@@ -80,14 +80,58 @@ gh api graphql --paginate \
         id: .id,
         path: .path,
         line: .line,
-        author: .comments.nodes[0].author.login,
-        body: .comments.nodes[0].body,
-        comment_id: (.comments.nodes[0].databaseId | tostring)
+        comment_count: (.comments.nodes | length),
+        first_comment: {
+          author: .comments.nodes[0].author.login,
+          body: .comments.nodes[0].body,
+          comment_id: (.comments.nodes[0].databaseId | tostring)
+        },
+        last_comment: {
+          author: .comments.nodes[-1].author.login,
+          body: .comments.nodes[-1].body,
+          comment_id: (.comments.nodes[-1].databaseId | tostring)
+        },
+        all_comments: [.comments.nodes[] | {author: .author.login, body: .body, comment_id: (.databaseId | tostring)}]
       })
   '
 ```
 
 取得後、**総件数を必ず確認**して報告する。未解決コメントが0件なら「未解決コメントはありません」と報告して終了。
+
+---
+
+## Step 1.5: 既存返信ありスレッドの分類
+
+> **コンテキスト確認:** 80%超えなら `/compact` を実行してから続ける。
+
+`comment_count >= 2` のスレッド（＝過去に返信済み）は、**最後のコメントの内容で対応を分岐する。**
+
+### 分類ルール
+
+| 最後のコメントの内容 | 対応 |
+|---|---|
+| **承認・了解系**（"OK", "LGTM", "Looks good", "makes sense", "good point", "that works" 等） | → スレッドを **resolve** して完了。修正不要。 |
+| **まだ問題あり系**（具体的な修正要求、"still ...", "but ...", 追加の指摘等） | → 新たな指摘として Step 2 の妥当性判断に回す（最後のコメントの内容を踏まえて再調査） |
+| **Issue作成提案系**（"should I create an issue?", "consider filing an issue", "track this separately" 等） | → GitHub Issue を自分で作成し、スレッドにIssueリンクを返信して **resolve** |
+
+### resolve の方法
+
+```bash
+# GraphQL mutation でスレッドを resolve
+gh api graphql -f query='
+  mutation {
+    resolveReviewThread(input: {threadId: "<thread_id>"}) {
+      thread { isResolved }
+    }
+  }
+'
+```
+
+### 重要
+
+- **会話の流れを全て読んでから判断する** — 最後のコメントだけでなく、スレッド全体の文脈を把握すること
+- 判断に迷う場合は「まだ問題あり」として Step 2 に回す（安全側に倒す）
+- resolve したスレッドは Step 2 以降の対象から除外する
 
 ---
 
@@ -223,6 +267,9 @@ rm -f .claude/pr-context.md
   🔧 スコープ外だが修正:          <N>件
   📋 スコープ外→Issue作成:        <N>件
   💬 妥当でないと返信:            <N>件
+  ✔️  既存返信→承認済みresolve:    <N>件
+  🔄 既存返信→再調査して修正:     <N>件
+  📋 既存返信→Issue作成+resolve:  <N>件
   📚 レビュースキルに観点追加:    <N>件（backend: N件 / frontend: N件）
 
 スレッド返信:
@@ -246,6 +293,7 @@ rm -f .claude/pr-context.md
 - **「PRレビュー対応」等の抽象的なコミットメッセージを使わない**
 - **テストが失敗したままコミットしない**
 - **妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない** — Step 3 で必ず確認を取る
-- **解決済みコメントを自動で resolve しない** — resolve はレビュワーが行うもの
+- **相手が承認済みのスレッドを放置しない** — 承認系の返信が来ていたら速やかに resolve する
+- **既に返信済みスレッドの会話の流れを無視しない** — 最後のコメントだけでなくスレッド全体を読んでから判断する
 - **Plan Mode に入る前に pr-context.md を書き出さない** — Stop hook のトリガーに必須
 - **Stop hook の指示を無視しない** — pr-context.md が存在する限り Post-Fix を実行すること
