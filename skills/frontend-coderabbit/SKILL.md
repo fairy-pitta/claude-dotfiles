@@ -113,6 +113,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **型アサーション`as`/`!`の残存チェック** — Core観点の原則禁止に加え、テストコードも含めて`as`/`!`が残っていないか確認。テストでは`?? []`/`?? ''`等のフォールバックで代替可能なケースが多い
 - **金額にFloat演算禁止** — 金額に浮動小数点演算を直接使わない。`Amount`型（branded integer）経由
 - **エンティティ型との型ドリフト防止** `[新観点 from PR#472]` — features層でentities層の型フィールドと一致するインライン型定義（例: `{ key: string; label: string }`）がないかチェックする。Pick/Omitで元のエンティティ型を参照すべき。インライン型はエンティティ型の変更に追従できずドリフトの原因になる
+- **新規entity作成時のapi/schema.tsの有無チェック** `[新観点 from PR#526]` — 新規entityを作成する際、`api/schema.ts`にZodスキーマが定義されているか確認する。権限・認証系APIレスポンスを含め、全てのAPIレスポンスにランタイム検証（Zodスキーマ）を設けること。CODING_STANDARDS.mdのスキーマ規約違反になる
 
 ### TanStack Vue Query（詳細）
 
@@ -177,6 +178,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **依存ライブラリの脆弱性** — 既知の脆弱性を持つライブラリ（例: `xlsx`）を使用していないか
 - **機密情報のログ出力** — `console.*`等でAPIキー・トークン・パスワードを出力していないか
 - **クロスオリジン環境でのCookie読み取り安全性** `[新観点 from PR#523]` — `document.cookie`は現在のoriginのCookieのみ返すため、APIが別originの場合にそのCookie値をCSRFトークンとして信頼してはいけない。Cookie読み取りにはAPI originと`window.location.origin`の一致チェックをセットで実装すること
+- **権限判定のデータソース一貫性チェック** `[新観点 from PR#526]` — 権限判定で使用するregionIdが表示対象エンティティの所属地域と一致しているか確認する。selectedRegion等のグローバル状態に依存していると、ユーザーが地域を切り替えた際に表示中エンティティとは無関係な権限判定になる。エンティティ自身が持つregionIdを使用すること
 
 ### Code Organization & DRY（詳細）
 
