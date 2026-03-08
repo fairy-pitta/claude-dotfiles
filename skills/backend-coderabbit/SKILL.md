@@ -59,6 +59,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **DomainRepositoryがDTOに依存するのはNG** — `AuthUserPayload`等のPresentation/Application DTOをDomain層のRepositoryが返していないか。ドメインモデル/VOを返しUseCase側でDTO変換すること（→ `references/code-examples.md`）
 - [ ] **Transaction管理の配置** — `transaction.atomic()`がUseCase層でのみ管理されているか。Repository層でのトランザクション禁止
 - [ ] **Result型とtransaction.atomicの組み合わせ** `[新観点 from PR#510]` — Result型パターンでtransaction.atomic()を使う場合、エラーチェックがatomicブロック内にあるか確認する。Result型は例外を投げないため、atomicブロック外でのエラーチェックではロールバックされない。エラー時はRuntimeErrorをraiseしてatomicにrollbackさせる
+- [ ] **transaction.atomic内のset_rollback漏れ** `[新観点 from PR#528]` — `transaction.atomic()` 内で複数の書き込み操作がある場合、最初の書き込み成功後に後続が失敗するケースで `set_rollback(True)` が漏れていないか確認する。漏れるとトークン無効化だけコミットされる等の部分コミットバグが発生する。全 `return failure()` 前に `set_rollback(True)` を追加する
 - [ ] **1 class = 1 file** — 各クラスが独自のファイルに配置されているか
 
 ### Type Safety
@@ -191,6 +192,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **Moduleレベルシングルトンとインスタンス変数の重複** — ステートレスなCalculator/Serviceの初期化方法を統一する
 - **Deprecated API使用** — 非推奨のDjango API（例: `CheckConstraint`のclass引数）を使用していないか
 - **コメント正確性** — コメントが実際のコードの挙動と一致しているか
+- **for_updateメソッドのdocstring** `[新観点 from PR#528]` — `select_for_update()` を使用するリポジトリメソッドの docstring にトランザクション内で呼び出す必要がある旨を明記しているか確認する。欠落すると呼び出し側がトランザクション外で使用するリスクがある
 - **型アノテーションスタイルの一貫性** — `Union[A, B]`と`A | B`が混在していないか
 - **到達不能コードの検出** `[新観点 from PR#486]` — 防御ガード（`if not x: return`）が上流のバリデーションで到達不能になっていないかチェック。冗長な防御コードはテストカバレッジを下げ保守コストを増やす。
 - **設定値マジックナンバーの定数化** `[新観点 from PR#486]` — TTL・タイムアウト等のビジネス設定値がローカル変数にハードコードされていないかチェック。constants/に定義して一元管理する。

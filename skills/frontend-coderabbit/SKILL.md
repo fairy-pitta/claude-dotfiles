@@ -129,6 +129,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
 - **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。
 - **module-level singletonのページ遷移時リセット** `[新観点 from PR#510]` — module-level singleton（composable内のmodule-scope ref）の状態がページ遷移時に適切にリセットされるか確認する。onUnmountedでのクリーンアップを忘れないこと。
+- **watcher間のエラークリア一貫性** `[新観点 from PR#528]` — 複数フィールドにwatcherを設定する場合、エラー状態のクリア処理が一貫しているか確認する。片方のwatcherだけ `submitError` をクリアし、もう片方が漏れているケースがないか。
 - **モジュールレベルキャッシュの認証境界ライフサイクル** `[新観点 from PR#523]` — メモリキャッシュ（module-level変数）を導入した際、ログアウト・セッション切れ・401/403エラー等の認証境界で適切にクリアされるかチェックする。キャッシュ追加時に無効化ポイントの洗い出しをセットで行わないと、古い値が残り続けてセキュリティ・機能バグになる。`invalidate`関数をexportし、認証境界で呼び出すこと
 
 ### Error Handling（詳細）
@@ -157,6 +158,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **ドラッグ操作のviewport境界チェック** `[新観点 from PR#510]` — ドラッグ操作でDOM要素の位置を更新する場合、viewport境界を超えないようクランプ処理があるか確認する。EDGE_MARGINなどの定数を使い、画面外にパネルが出ないよう制約する。
 - **mousedownイベントの左クリック限定** `[新観点 from PR#510]` — mousedownイベントハンドラではe.button === 0（左クリック）のガードを入れる。右クリック・中クリックでのドラッグ開始を防止する。
 - **レスポンシブ時のリサイズUI非表示** `[新観点 from PR#510]` — レスポンシブ対応のmedia queryでサイズを固定する場合、リサイズ関連のUI要素（ハンドル等）も非表示にする。display: noneで操作不能にすること。
+- **v-elseの防御的使用** `[新観点 from PR#528]` — union型の状態分岐で `v-else` を使う場合、将来の状態追加を考慮して `v-else-if` で明示的に条件を指定しているか確認する。`v-else` は未知の状態でもマッチしてしまう。
+- **フォーム送信成功後の再送信防止** `[新観点 from PR#528]` — フォーム送信成功後にUI状態（ボタンdisabled等）を適切に制御し、再送信を防いでいるか確認する。成功メッセージ表示中に再送信可能な状態は意図しない二重処理を招く。
 
 ### Test Quality（テストファイルが変更されている場合）
 
@@ -191,6 +194,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **イベントハンドラの不要な再代入** — 高頻度イベントハンドラで状態が変化しない場合も毎回代入が走っていないか
 - **`@pages/`エイリアスの使用** — pages層内では`@pages/`エイリアスを使用（相対パスは規約違反）
 - **APIエンドポイント定数化** `[新観点 from PR#486]` — fetch/axiosのURL文字列が直書きされていないかチェック。定数として抽出してDRY原則を維持する。
+- **バリデーション正規表現の重複** `[新観点 from PR#528]` — バリデーションロジックの正規表現や条件を複数箇所（ユーティリティとコンポーネント等）で重複定義していないか確認する。共通の定数・関数にまとめてシングルソースオブトゥルースを維持する。
 - **dialog アクセシブル名の確認** `[新観点 from PR#497]` — `role="dialog"` または `role="alertdialog"` の要素が `aria-labelledby` か `aria-label` のいずれかを持つことを確認。両方 `undefined` の場合はスクリーンリーダーが認識できない。共通コンポーネントのデフォルト値設定が必要か確認する。
 - **Vue Transition + watch(flush:"post") でのフォーカスタイミング** `[新観点 from PR#497]` — Transition アニメーション中の watch コールバックでフォーカスを設定する場合、`nextTick + requestAnimationFrame` でラップしてレイアウト完了後に実行することを確認する。
 - **モーダル/ダイアログのフォーカスフォールバック** `[新観点 from PR#497]` — フォーカス可能要素が存在しない場合（hideCloseButton=true + slot 内に focusable 要素なし）でもモーダルにフォーカスが当たるよう、コンテナに `tabindex="-1"` を付与してフォールバックフォーカスが設定されているか確認する。
