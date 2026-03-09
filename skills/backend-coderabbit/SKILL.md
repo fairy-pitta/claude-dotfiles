@@ -61,6 +61,8 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **Result型とtransaction.atomicの組み合わせ** `[新観点 from PR#510]` — Result型パターンでtransaction.atomic()を使う場合、エラーチェックがatomicブロック内にあるか確認する。Result型は例外を投げないため、atomicブロック外でのエラーチェックではロールバックされない。エラー時はRuntimeErrorをraiseしてatomicにrollbackさせる
 - [ ] **transaction.atomic内のset_rollback漏れ** `[新観点 from PR#528]` — `transaction.atomic()` 内で複数の書き込み操作がある場合、最初の書き込み成功後に後続が失敗するケースで `set_rollback(True)` が漏れていないか確認する。漏れるとトークン無効化だけコミットされる等の部分コミットバグが発生する。全 `return failure()` 前に `set_rollback(True)` を追加する
 - [ ] **1 class = 1 file** — 各クラスが独自のファイルに配置されているか
+- [ ] **トランザクション外副作用の並行リスク** `[新観点 from PR#536]` — トランザクション外でメール送信等の副作用を実行する場合、その間に他リクエストが状態を変更し、送信内容が無効になる競合がないか検証する。特にcooldown=0等の設定で競合窓が広がるケースに注意
+- [ ] **Domain層docstringの実装詳細漏洩** `[新観点 from PR#536]` — Domain層の抽象メソッドdocstringに「UPDATE ... WHERE」等のSQL/ORM実装詳細が含まれていないか確認する。振る舞いはドメイン用語で記述し、実装方法はInfra層に委ねる
 
 ### Type Safety
 
@@ -167,6 +169,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **`interaction`検証テストで`execute()`の戻り値も確認** — `mock.assert_called_once()` だけでなく `result, error = usecase.execute()` でアンパックして `assert error is None` まで検証（→ `references/code-examples.md`）
 - **`count()`のみのアサーションは不十分** — `assert Model.objects.count() == 1` だけでなく、特定行の存在も確認
 - **異常系テストでDB不変性を検証** — 例外発生テストで `assert Model.objects.count() == 0` のようにDB不変性まで検証
+- **セキュリティテストの副作用未検証** `[新観点 from PR#536]` — 拒否系テスト（使用済みトークン、期限切れ等）で「操作が失敗した」だけでなく「副作用が発生していない」（パスワード未変更等）ことも検証する。エラー返却のみのアサーションは退行を見逃す
 - **テストヘルパーの`conftest.py`共通化** — 3箇所以上で同一ヘルパーが重複しているなら`conftest.py`に共通化
 - **リポジトリテストのクエリ数検証一貫性** `[新観点 from PR#469]` — DBアクセスを伴うリポジトリテストでdjango_assert_num_queriesが統一的に使用されているか確認する。空結果テストでも省略しない
 - **ファクトリのデフォルト値とモデル制約の整合性** `[新観点 from PR#472]` — テストファクトリのデフォルト値がモデルの`CheckConstraint`に違反していないか確認する。特にpolymorphic FKパターン（category_type + FK）では、デフォルトの組み合わせが制約条件を満たすこと
