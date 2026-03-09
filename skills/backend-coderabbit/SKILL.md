@@ -56,6 +56,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - [ ] **Feature間直接依存** — 通常Feature間の直接import（例: journal→accounting）がないか。`shared/types/`経由が必要。全Feature→shared/・user/・organization/ は許可
 - [ ] **Domain層の純粋性** — Domain層（entities, repositories, enums）がDjango/DRFに依存していないか（`QuerySet`・`Model`・インフラ概念の混入禁止）
+- [ ] **Application層のORM非依存** `[新観点 from PR#537]` — Application層のサービス・ユースケースがORM Model（`from app.models import ...`）を直接importしていないか確認する。依存方向「Application → Domain ← Infrastructure」に従い、ORM操作はInfrastructure層のRepository実装に配置し、Application層はDomainインターフェースのみに依存させる
 - [ ] **DomainRepositoryがDTOに依存するのはNG** — `AuthUserPayload`等のPresentation/Application DTOをDomain層のRepositoryが返していないか。ドメインモデル/VOを返しUseCase側でDTO変換すること（→ `references/code-examples.md`）
 - [ ] **Transaction管理の配置** — `transaction.atomic()`がUseCase層でのみ管理されているか。Repository層でのトランザクション禁止
 - [ ] **Result型とtransaction.atomicの組み合わせ** `[新観点 from PR#510]` — Result型パターンでtransaction.atomic()を使う場合、エラーチェックがatomicブロック内にあるか確認する。Result型は例外を投げないため、atomicブロック外でのエラーチェックではロールバックされない。エラー時はRuntimeErrorをraiseしてatomicにrollbackさせる
@@ -96,6 +97,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT \*禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
 - [ ] **QuerySetのorder_by明示** `[新観点 from PR#472]` — Django の QuerySet で `.all()` を使用する際、`order_by` を指定しないとDB依存で順序が揺れる。APIレスポンスの安定性・テスト再現性のため、`order_by` は常に明示すべき
 - [ ] **インデックスカバレッジ確認** `[新観点 from PR#537]` — フィルタ条件を変更した場合、対象テーブルの Meta.indexes が新しいクエリパスをカバーしているか確認する。条件変更でインデックスが追随しないとフルスキャンになる。フィルタ条件変更時は EXPLAIN で確認するか、対象テーブルのインデックス定義を目視チェックする
+- [ ] **マイグレーションのAddIndexConcurrently使用** `[新観点 from PR#537]` — 本番稼働中のテーブルにインデックスを追加するマイグレーションで `migrations.AddIndex` を使っていないか確認する。DDLロックで本番停止を招くため、`AddIndexConcurrently` + `atomic = False` を使用する。`from django.contrib.postgres.operations import AddIndexConcurrently` が必要
 
 ### Test Quality（テストファイルが変更されている場合）
 
@@ -103,6 +105,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **テスト名は英語・命名順序** — `test_<動作>_<条件>_<期待結果>`の順序が必須。日本語禁止（→ `references/code-examples.md`）
 - [ ] **正常系カバレッジ** — 異常系テストのみで正常系が抜けていないか
 - [ ] **テストアサーションのフィルタ一致** `[新観点 from PR#537]` — テストのアサーションで使用するフィルタ条件が本番の削除/検索ロジックと同等か確認する。テストデータが1パターンのみだとフィルタ不足でも偽陽性が出ない。テストのフィルタは本番ロジックのキー条件と一致させる
+- [ ] **削除キー要素ごとの分離性テスト** `[新観点 from PR#537]` — 複合キー（company_id, year, month等）による削除ロジックをテストする際、各キー要素の分離性を個別に検証しているか確認する。会社間分離テストだけでは不十分で、同一会社・別年度の同月データが影響を受けないことも検証する
 
 ### Syntax & Basic Quality
 
