@@ -95,12 +95,14 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **`SELECT *`禁止** — `select_related(...).get()`は全カラム取得になる。`.only()`/`.values()`で絞り込む（→ `references/code-examples.md`）
 - [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT \*禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
 - [ ] **QuerySetのorder_by明示** `[新観点 from PR#472]` — Django の QuerySet で `.all()` を使用する際、`order_by` を指定しないとDB依存で順序が揺れる。APIレスポンスの安定性・テスト再現性のため、`order_by` は常に明示すべき
+- [ ] **インデックスカバレッジ確認** `[新観点 from PR#537]` — フィルタ条件を変更した場合、対象テーブルの Meta.indexes が新しいクエリパスをカバーしているか確認する。条件変更でインデックスが追随しないとフルスキャンになる。フィルタ条件変更時は EXPLAIN で確認するか、対象テーブルのインデックス定義を目視チェックする
 
 ### Test Quality（テストファイルが変更されている場合）
 
 - [ ] **関数ベーステスト必須** — `class TestXxx:`禁止。すべて`def test_xxx():`のモジュールレベル関数
 - [ ] **テスト名は英語・命名順序** — `test_<動作>_<条件>_<期待結果>`の順序が必須。日本語禁止（→ `references/code-examples.md`）
 - [ ] **正常系カバレッジ** — 異常系テストのみで正常系が抜けていないか
+- [ ] **テストアサーションのフィルタ一致** `[新観点 from PR#537]` — テストのアサーションで使用するフィルタ条件が本番の削除/検索ロジックと同等か確認する。テストデータが1パターンのみだとフィルタ不足でも偽陽性が出ない。テストのフィルタは本番ロジックのキー条件と一致させる
 
 ### Syntax & Basic Quality
 
