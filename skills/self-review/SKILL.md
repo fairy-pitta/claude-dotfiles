@@ -1,6 +1,6 @@
 ---
 name: self-review
-description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 → codex review CLI → 修正 → coderabbit review CLI → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
+description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 → codex review CLI → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
 ---
 
 # Self Review Orchestrator
@@ -30,9 +30,9 @@ git diff --name-only origin/dev...HEAD
 
 | 変更ファイル     | 実行するステップ                                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `backend/` のみ  | sora-review → backend-coderabbit → codex review CLI → coderabbit review CLI                                               |
-| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI                      |
-| 両方             | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex review CLI → coderabbit review CLI |
+| `backend/` のみ  | sora-review → backend-coderabbit → codex review CLI                                               |
+| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI                      |
+| 両方             | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex review CLI |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
 
@@ -56,10 +56,6 @@ if [ -f "$PLAN_FILE" ]; then
 fi
 cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$SORA_PROMPT"
 
-# STEP E用: coderabbit.yaml があれば渡す
-CODERABBIT_YAML="/Users/wao_singapore/forval-crossgear/coderabbit.yaml"
-CR_YAML_ARG=""
-[ -f "$CODERABBIT_YAML" ] && CR_YAML_ARG="-c $CODERABBIT_YAML"
 ```
 
 ---
@@ -231,52 +227,6 @@ A-3 と同じコマンドで全テストを実行する。
 
 `/commit-push` スキルを使用してコミット＆プッシュする。
 
-#### ↓ コンテキスト確認 → 80% 以上なら `/compact` → STEP E へ
-
----
-
-### [STEP E] coderabbit review CLI（常に実行）
-
-`coderabbit review --plain` CLI を使い、CodeRabbit AI によるコードレビューを受ける。
-
-#### E-1. coderabbit review 実行
-
-```bash
-CR_OUTPUT=$(coderabbit review --plain --base dev \
-  -c "$CLAUDE_MD" \
-  $CR_YAML_ARG \
-  -c "$SKILLS_DIR/references/review-format.md" \
-  -c "$SKILLS_DIR/references/review-process.md" 2>&1)
-CR_EXIT=$?
-echo "$CR_OUTPUT"
-```
-
-**レートリミット判定:** 出力に `rate limit` / `429` / `quota` / `too many requests` 等が含まれる場合、またはexit codeが非0でレートリミットを示す場合は、待機せず即スキップする。
-
-```
-coderabbit review: ⏭️ レートリミットのためスキップ
-```
-
-レートリミット以外の正常出力の場合、指摘事項を抽出・件数を記録:
-
-```
-coderabbit review: <N>件
-```
-
-0件なら `✅ 指摘なし` として修正・コミットをスキップ。
-
-#### E-2. 修正
-
-A-2 と同様に優先度順で修正する。
-
-#### E-3. テスト実行（必須）
-
-A-3 と同じコマンドで全テストを実行する。
-
-#### E-4. コミット
-
-`/commit-push` スキルを使用してコミット＆プッシュする。
-
 #### ↓ コンテキスト確認 → 80% 以上なら `/compact` → ラウンドサマリーへ
 
 ---
@@ -290,10 +240,9 @@ A-3 と同じコマンドで全テストを実行する。
 [STEP B] frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP C] frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
 [STEP D] codex review:          <N>件 / ✅ 指摘なし
-[STEP E] coderabbit review:     <N>件 / ✅ 指摘なし / ⏭️ レートリミットスキップ
 ```
 
-**全ステップが ✅ 指摘なし（⏭️ スキップ含む） → ループ終了（完了レポートへ）**
+**全ステップが ✅ 指摘なし → ループ終了（完了レポートへ）**
 **1件以上の指摘あり → Round <N+1> へ戻る**
 
 ---
@@ -310,7 +259,6 @@ A-3 と同じコマンドで全テストを実行する。
   [STEP B] frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
   [STEP C] frontend-architecture: ✅ 指摘なし  （該当する場合）
   [STEP D] codex review:          ✅ 指摘なし
-  [STEP E] coderabbit review:     ✅ 指摘なし / ⏭️ レートリミットスキップ
 
 # プロンプトファイルのクリーンアップ
 rm -f "$SORA_PROMPT"
@@ -326,5 +274,5 @@ rm -f "$SORA_PROMPT"
 - **テストが失敗したままコミットしない**
 - **スキルのチェックリストを実際に適用せずに「指摘なし」と判定しない**
 - **`fix: レビュー対応` 等の抽象的なコミットメッセージを使わない**
-- **STEP A → B → C → D → E の順番を変えない**
+- **STEP A → B → C → D の順番を変えない**
 - **1ステップでも指摘があればラウンドを最初から回し直す**
