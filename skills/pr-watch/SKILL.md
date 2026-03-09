@@ -126,14 +126,35 @@ gh api graphql \
 
 #### 4a. 未解決コメントがある場合
 
-`/address-pr-comments` を実行して全件対応する。
+**Skill ツールを使って `address-pr-comments` スキルを呼び出す。**
+
+```
+Skill tool: skill="address-pr-comments"
+```
+
+**ただし、pr-watch は自律運転モードのため、address-pr-comments の以下のステップをオーバーライドする:**
+
+| address-pr-comments のステップ | pr-watch でのオーバーライド |
+|---|---|
+| Step 0: Worktree作成 | **スキップ** — 現在のブランチで直接作業する |
+| Step 4-1: 妥当でないコメントをユーザーに提示 | **スキップ** — 自分で判断して即座にPRスレッドに返信 |
+| Step 4-2: pr-context.md 書き出し | **スキップ** — 不要 |
+| Step 4-3: Plan Mode で承認待ち | **スキップ** — Plan Mode に入らず直接修正する |
+| Step 5: Stop hook 待ち | **Stop hook はスキップ** — 修正完了後すぐに返信・resolve を自分で実行。**ただし Task C（レビュースキルへの観点追加）は実行する** |
+
+**つまり、address-pr-comments の Step 1〜3（取得・分類・妥当性判断）は従い、Step 4 は自律的に実行、Step 5 は Task C のみ実行する。**
 
 **重要ルール:**
 - ユーザー承認を待たない。自分で妥当性を判断して進める
-- 妥当なコメント → コードを修正 → テスト → コミット → プッシュ
-- 妥当でないコメント → PRスレッドに理由を返信
+- 妥当なコメント → コードを修正 → テスト → コミット → プッシュ → `Fixed in <commit-hash>` を返信 → resolve
+- 妥当でないコメント → PRスレッドに理由を返信（ユーザー確認なしで直接返信）
 - 全件対応後、`@coderabbitai full review` をPRにコメント
 - **full review連投カウンタをリセットする**（コメント対応後の再リクエストは新規扱い）
+- **レビュースキルへの観点追加を必ず実行する**（address-pr-comments Step 5 Task C）:
+  - `backend/` の指摘 → `~/.claude/claude-dotfiles/skills/backend-coderabbit/SKILL.md` に追記
+  - `frontend/` の指摘 → `~/.claude/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` に追記
+  - フォーマット: `- **<観点名>** [新観点 from PR#<number>] - <チェック内容>。<理由>。<対策>。`
+  - 追記後 claude-dotfiles にコミット＆プッシュ
 
 #### 4b. 未解決コメントがない場合 → full review リクエスト
 
