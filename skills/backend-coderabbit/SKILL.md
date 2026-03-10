@@ -166,6 +166,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **Admin list_displayでのN+1** — `list_display`に集計表示がある場合、`get_queryset()`で`annotate(Count(...))`しているか
 - **ページネーションの副キー** `[新観点 from PR#480]` — `order_by` が単一カラムの場合、同値タイブレーカー不在で重複・取りこぼしが起きる。PKを副キーに追加して安定ソートにする
 - **management commandでのDB側フィルタリング** `[新観点 from PR#510]` — management commandでも大量データの可能性を考慮し、DB側フィルタリング（Exists subquery等）を優先する。Python側でset差分を取る前に、SQLレベルで絞り込めないか検討する。iterator(chunk_size)で逐次取得してメモリ圧迫を回避する
+- **management commandの外部参照事前検証** `[新観点 from PR#526]` — CSV等の外部データからDB参照（Role, Permission等）を行う管理コマンドで、参照先の存在をループ内で個別チェック（try/except DoesNotExist + WARNING）していないか確認する。部分適用で不完全な状態がコミットされるため、ループ前に一括取得＋欠落チェック→CommandErrorでfail-fastすべき
 
 ### Test Quality（詳細）
 
