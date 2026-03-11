@@ -1,3 +1,8 @@
+---
+name: create-pr
+description: Create a pull request for the current branch after checking git status and staged changes.
+---
+
 # Create Pull Request
 
 Create a pull request for the current changes.

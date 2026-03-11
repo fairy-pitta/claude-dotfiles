@@ -1,3 +1,8 @@
+---
+name: read-pr-comments
+description: Retrieve and analyze unresolved review comments from the current pull request or a specified PR/branch.
+---
+
 # Read Unresolved PR Comments
 
 Retrieve and analyze unresolved review comments from the current PR.

@@ -1,3 +1,8 @@
+---
+name: push
+description: Push the current branch to the remote after verifying branch safety and checking for uncommitted changes.
+---
+
 # Push
 
 Push the current branch to remote.

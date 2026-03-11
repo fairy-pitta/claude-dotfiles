@@ -1,3 +1,8 @@
+---
+name: fix-review
+description: Address unresolved review comments for a branch by working in a dedicated git worktree.
+---
+
 # Fix Review Points
 
 Address unresolved review comments on branch: $ARGUMENTS

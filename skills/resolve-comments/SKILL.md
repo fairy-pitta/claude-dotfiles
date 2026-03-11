@@ -1,3 +1,8 @@
+---
+name: resolve-comments
+description: Resolve addressed GitHub PR review threads on the current pull request without touching general conversation comments.
+---
+
 # Resolve PR Review Comments
 
 Automatically resolve all addressed review threads on the current PR.

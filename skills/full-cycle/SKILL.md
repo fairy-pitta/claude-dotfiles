@@ -1,3 +1,8 @@
+---
+name: full-cycle
+description: End-to-end implementation cycle that chains plan creation, execution, self-review, fixes, commit, push, and PR creation.
+---
+
 # Full Cycle
 
 End-to-end implementation cycle: Plan creation (with Codex validation) -> Plan execution -> Self-review -> Fix -> Commit -> Push -> PR creation.

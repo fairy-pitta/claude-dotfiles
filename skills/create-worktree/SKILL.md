@@ -1,3 +1,8 @@
+---
+name: create-worktree
+description: Create an isolated git worktree for a specified branch after fetching the latest remote state.
+---
+
 # Create Git Worktree
 
 Create an isolated git worktree for the specified branch: $ARGUMENTS

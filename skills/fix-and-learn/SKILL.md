@@ -1,3 +1,8 @@
+---
+name: fix-and-learn
+description: Fix unresolved PR review comments and feed the resulting learnings back into the coderabbit review skill.
+---
+
 # Fix PR Comments & Learn
 
 PRの未解決レビューコメントを修正し、得られた知見を coderabbit-review スキルに蓄積する。

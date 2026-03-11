@@ -1,3 +1,8 @@
+---
+name: commit-push
+description: Commit and push current changes with a default strategy of creating a new commit unless an explicit amend is requested.
+---
+
 # Commit and Push Changes
 
 Commit and push the current changes with strategic git practices.

@@ -1,3 +1,8 @@
+---
+name: review-loop
+description: Repeat backend-coderabbit or frontend-coderabbit reviews until all findings on the current branch are addressed.
+---
+
 # Review Loop
 
 backend-coderabbit / frontend-coderabbit スキルを繰り返し実行し、指摘箇所を全て解消するまでループするスキル。
