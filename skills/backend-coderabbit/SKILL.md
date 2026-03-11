@@ -90,6 +90,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **定数ファイルの責務分離** `[新観点 from PR#486]` — メッセージ定数ファイルに設定値（TTL, 閾値等）を混在させていないか確認する。文言定数と運用設定値は別ファイルに分離すること。混在すると責務が曖昧になり保守性が低下する
 - [ ] **DRFフィールド制約のエラーメッセージ定数化** `[新観点 from PR#520]` — DRFフィールドにmax_length/min_length/min_value/max_value等の制約を追加する際、error_messagesもセットでMsg定数化されているか確認する。DRFビルトインメッセージはプロジェクトの「エラーメッセージ定数化」ルールの対象外と見落としやすい。error_messagesパラメータで明示的に定数を指定すること
 - [ ] **開発者向けエラーメッセージの定数化漏れ** `[新観点 from PR#546]` — RuntimeErrorなど開発者向けエラーもエラーメッセージ定数化ルールの対象。ユーザー向けエラーだけでなく、Repository契約違反等の内部エラーも定数化されているかチェック。
+- [ ] **同一内部契約違反の定数再利用** `[新観点 from PR#546]` — 複数usecaseで同じ契約違反（`Result` が error なしで `None`、Repository が `None` を返す等）を扱う場合、メッセージを raw 文字列で複製せず既存の共通定数を再利用しているか確認する。文言の分岐を防ぎテスト保守性を上げる。
 
 ### Database Performance
 
@@ -109,6 +110,9 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - [ ] **削除キー要素ごとの分離性テスト** `[新観点 from PR#537]` — 複合キー（company_id, year, month等）による削除ロジックをテストする際、各キー要素の分離性を個別に検証しているか確認する。会社間分離テストだけでは不十分で、同一会社・別年度の同月データが影響を受けないことも検証する
 - [ ] **Result型エラー分岐のロールバック検証テスト** `[新観点 from PR#537]` — transaction.atomic内でResult型（failure返却）を使う複数ステップ処理で、途中ステップ失敗時にset_rollback(True)で先行ステップの変更がロールバックされることを結合テストで検証しているか確認する。成功系テストだけでは部分コミットバグを検出できない。monkeypatchで中間ステップをfailureに差し替え、全テーブルが元のまま残ることをアサートする
 - [ ] **異常系テストのエラー種別検証** `[新観点 from PR#546]` — 異常系テストで「エラーが返ること」だけでなく「正しいエラー種別が返ること」まで検証しているか。error_response is not Noneのみでは分岐の取り違えを検出できない
+- [ ] **ページネーション境界値の片側超過テスト** `[新観点 from PR#546]` — pagination helper / validator に上限チェックがある場合、ちょうど境界だけでなく「1件超過」の失敗系テストがあるか確認する。`>` と `>=` の取り違えを検出する。
+- [ ] **Presentation parser の非数値入力テスト** `[新観点 from PR#546]` — `int()` 変換を行う query/body parser に対し、ゼロや負数だけでなく `"abc"` 等の非数値入力で `ValueError` 分岐を通すテストがあるか確認する。
+- [ ] **成功系 parser テストのデフォルト値固定** `[新観点 from PR#546]` — parser の成功系テストで主要変換だけでなく、同時に返るデフォルト値（page/page_size等）も固定しているか確認する。暗黙のデフォルト変更を検出するため。
 
 ### Syntax & Basic Quality
 
@@ -167,6 +171,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **例外変換時のメッセージ保持** `[新観点 from PR#546]` — 例外変換時に元のエラーメッセージを破棄していないか。デバッグ時の原因特定のため、元例外のメッセージはできる限り保持する
 - **リトライ間隔パラメータの最小値バリデーション** `[新観点 from PR#546]` — リトライ間隔パラメータの最小値バリデーション。0を許可すると即時リトライによる無限ループやリソース飢餓が発生する可能性がある。リトライ系パラメータは最低1秒以上を強制。
 - **同一usecase内の複数分岐のエラーハンドリング統一** `[新観点 from PR#546]` — 同一usecase内の複数分岐で同じドメインメソッドを呼ぶ場合、全分岐でエラーハンドリングが統一されているかチェック。一方の分岐だけtry-exceptがない場合、Result契約を破る。
+- **同一エラーコードの例外型統一** `[新観点 from PR#546]` — 同じエラーコード（例: `NOT_APPLICANT`）を複数usecaseで返す場合、例外型まで統一されているか確認する。`ValidationError` と `PermissionDeniedError` の混在は API の HTTP ステータス差異を生み、呼び出し側を不安定にする。
 
 ### Database Performance（詳細）
 
@@ -202,6 +207,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 ### Code Organization & DRY（詳細）
 
 - **DRY原則違反** — 同一・類似のヘルパーメソッドやバリデーションロジックが複数箇所に存在
+- **QuerySetフィルタ重複の共通化** `[新観点 from PR#546]` — `exclude_expired_pending` のような同一 QuerySet フィルタが `search` / `count` / `search_approvable_requests` に重複していないか確認する。3箇所以上の完全重複は helper 化して条件のズレを防ぐ。
 - **入力型だけ異なる同一アルゴリズムの重複** `[新観点 from PR#469]` — 入力型が異なるだけでロジックが同一の関数ペアがないか確認する。型変換部分を分離して共通化すべき。2箇所でもメンテリスクがある
 - **メソッド間の同一集計再計算** `[新観点 from PR#469]` — メインメソッドで作成した集計結果(dict等)をサブメソッドに渡さず再計算していないか確認する。O(n)走査の不要な繰り返しを防ぐ
 - **同一Repository呼び出しのprivate メソッド抽出** — `save()`と`find_*()`で同じ`Entity.reconstruct(...)`が重複している場合、`_to_entity(obj)`に抽出
@@ -211,6 +217,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **Deprecated API使用** — 非推奨のDjango API（例: `CheckConstraint`のclass引数）を使用していないか
 - **コメント正確性** — コメントが実際のコードの挙動と一致しているか
 - **for_updateメソッドのdocstring** `[新観点 from PR#528]` — `select_for_update()` を使用するリポジトリメソッドの docstring にトランザクション内で呼び出す必要がある旨を明記しているか確認する。欠落すると呼び出し側がトランザクション外で使用するリスクがある
+- **カーソルページネーションのソート契約明記** `[新観点 from PR#546]` — cursor を受け付ける repository interface に、結果がどの順序（`-requested_at, -id` 等）で返るかが docstring で明記されているか確認する。実装だけに order_by があっても、Protocol 契約が曖昧だと差し替え時に崩れる。
 - **型アノテーションスタイルの一貫性** — `Union[A, B]`と`A | B`が混在していないか
 - **到達不能コードの検出** `[新観点 from PR#486]` — 防御ガード（`if not x: return`）が上流のバリデーションで到達不能になっていないかチェック。冗長な防御コードはテストカバレッジを下げ保守コストを増やす。
 - **設定値マジックナンバーの定数化** `[新観点 from PR#486]` — TTL・タイムアウト等のビジネス設定値がローカル変数にハードコードされていないかチェック。constants/に定義して一元管理する。
