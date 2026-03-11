@@ -161,6 +161,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **v-elseの防御的使用** `[新観点 from PR#528]` — union型の状態分岐で `v-else` を使う場合、将来の状態追加を考慮して `v-else-if` で明示的に条件を指定しているか確認する。`v-else` は未知の状態でもマッチしてしまう。
 - **フォーム送信成功後の再送信防止** `[新観点 from PR#528]` — フォーム送信成功後にUI状態（ボタンdisabled等）を適切に制御し、再送信を防いでいるか確認する。成功メッセージ表示中に再送信可能な状態は意図しない二重処理を招く。
 - **watch内のフォームリセット漏れ** `[新観点 from PR#536]` — watchでルートパラメータやトークン変更を監視する際、エラー状態だけでなくフォーム入力値（特にパスワード等の機密値）もリセットしているか確認する。
+- **aria-disabled vs disabled の使い分け** `[新観点 from PR#555]` — disabled属性はフォーカスを奪うため、aria-describedby等のa11y情報が届かない。理由テキストを伝えたい場合はaria-disabledに切り替えてクリックガードを実装する。
 
 ### Test Quality（テストファイルが変更されている場合）
 
@@ -175,6 +176,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **E2E/VRTテストのセレクタ安定性とモックレスポンス整合性** `[新観点 from PR#480]` — CSS クラスセレクタはスタイル変更で壊れやすい。コンポーネントに `data-testid` を追加し `page.getByTestId()` を使うこと。また MSW/Playwright モックのレスポンス形式はAPIの実際のレスポンス形式（ページネーションフィールド `count`/`page`/`page_size` 等）と一致させること
 - **ソートテストの non-null assertion** `[新観点 from PR#480]` - ループ範囲が保証されているソート検証テストで `data?.[i+1].createdAt.getTime() ?? 0` のパターンは false positive のリスク。`expect(data!.length).toBeGreaterThanOrEqual(2)` を追加し `data![i]`/`data![i+1]` の non-null assertion を使う。
 - **テストモック正規表現の厳密化** `[新観点 from PR#480]` — Playwrightの `page.route()` やMSWの正規表現パターンに `$` アンカーを付けているか確認。広すぎるパターンは将来エンドポイント追加時に衝突する
+- **実装追加時のテストケース同期** `[新観点 from PR#555]` — 既存の判定関数やユーティリティに新しいケース（例: concatColumns）を追加した場合、対応するテストファイルにもケースが追加されているか確認する。実装とテストの不一致は見落としやすい。
 
 ### Security（セキュリティ）
 
@@ -198,6 +200,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **`@pages/`エイリアスの使用** — pages層内では`@pages/`エイリアスを使用（相対パスは規約違反）
 - **APIエンドポイント定数化** `[新観点 from PR#486]` — fetch/axiosのURL文字列が直書きされていないかチェック。定数として抽出してDRY原則を維持する。
 - **バリデーション正規表現の重複** `[新観点 from PR#528]` — バリデーションロジックの正規表現や条件を複数箇所（ユーティリティとコンポーネント等）で重複定義していないか確認する。共通の定数・関数にまとめてシングルソースオブトゥルースを維持する。
+- **バリデーション関数のパラメータ網羅性** `[新観点 from PR#555]` — バリデーション関数が全入力パラメータ（特にインデックス系）の範囲チェックを実施しているか確認する。ヘッダー名の検証はするがインデックスの範囲チェックを忘れがち。入力値ごとにバリデーションの有無を対応表で確認する。
+- **boolean XOR パターンの可読性** `[新観点 from PR#555]` — `a === b` で両方true/両方falseを除外するXORパターンは一見分かりにくい。排他入力チェック等で使用する場合はインラインコメントで意図を説明する。
 - **dialog アクセシブル名の確認** `[新観点 from PR#497]` — `role="dialog"` または `role="alertdialog"` の要素が `aria-labelledby` か `aria-label` のいずれかを持つことを確認。両方 `undefined` の場合はスクリーンリーダーが認識できない。共通コンポーネントのデフォルト値設定が必要か確認する。
 - **Vue Transition + watch(flush:"post") でのフォーカスタイミング** `[新観点 from PR#497]` — Transition アニメーション中の watch コールバックでフォーカスを設定する場合、`nextTick + requestAnimationFrame` でラップしてレイアウト完了後に実行することを確認する。
 - **モーダル/ダイアログのフォーカスフォールバック** `[新観点 from PR#497]` — フォーカス可能要素が存在しない場合（hideCloseButton=true + slot 内に focusable 要素なし）でもモーダルにフォーカスが当たるよう、コンテナに `tabindex="-1"` を付与してフォールバックフォーカスが設定されているか確認する。
