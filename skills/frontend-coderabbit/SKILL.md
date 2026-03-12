@@ -210,6 +210,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **aria-disabled疑似クラス** `[新観点 from PR#555]` - aria-disabledに変更した場合、:hover/:focus等の疑似クラスが引き続き有効なため、無効状態のスタイルが正しく適用されるか確認する。`:not([aria-disabled='true']):hover`パターンを使用。
 - **バックエンド正規化の一貫性** `[新観点 from PR#555]` - バックエンドで正規化するフィールド（trim等）はフロントエンドのビルダーでも同じ正規化を適用し、保存前後の一貫性を確保する。
 - **テストバリエーション網羅** `[新観点 from PR#555]` - 新機能で複数バリエーション（digits/keyword等）がある場合、片方のみ深いテストで他方が浅いままだと回帰リスクがある。全バリエーションに同等のテストカバレッジを確保する。
+- **短い行のパディング漏れ** `[新観点 from PR#560]` — 追加列を生成するルール（duplicateColumn, arithmeticColumns, arithmeticWithConstant等）で `sourceIndex >= row.length` の短い行を処理する際、行をそのまま返すと `maxColumnCount` との列数不整合が発生する。`maxColumnCount` まで null パディングしてから結果列を追加しているか確認する。
+- **isSafeInteger チェックの除算後誤判定** `[新観点 from PR#560]` — 連鎖演算（divide→add等）で除算後の合法な小数結果に対して `Number.isSafeInteger` チェックが false を返し null になるバグ。オーバーフロー判定は `previousAccumulator` と `nextValue` がともに safe integer の場合のみに限定すべき。
 
 ---
 
