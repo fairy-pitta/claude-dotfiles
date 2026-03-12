@@ -229,3 +229,5 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - `v-for`のindex keyを見逃す
 - Floating Promiseを見逃す
 - コードdiffなしに修正案を提示
+- **プレビューと実行のバリデーション不整合** `[新観点 from PR#560]` — 実行パス(`useCustomDefinitionRuleExecution`)に上限チェック（例: `MAX_ARITHMETIC_STEPS`）があるのにプレビューパス(`useCustomDefinitionPreview`)にないと、プレビュー成功→実行失敗のUX不整合が発生する。共通定数を抽出して両パスで同一条件を検証すること。
+- **unsafe integer 定数のフロントエンド側ガード** `[新観点 from PR#560]` — `csvRuleEngine` 等でルールノードの `constants` を `Number.isFinite` のみで検証すると、`9007199254740993` のような JS 安全整数範囲外の値が通過する。整数は `Number.isSafeInteger`、小数はそのまま許可する形で検証を統一すること。

@@ -248,3 +248,4 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - Result型の`_`でのエラー無視を見逃す
 - テスト命名規約の順序違反・クラスベーステストを見逃す
 - コードdiffなしに修正案を提示
+- **除算ゼロの定義時拒否** `[新観点 from PR#560]` — 算術ルールで `operators` と `constants` を独立にバリデーションすると、`divide × 0` の組み合わせが定義時に通過し実行時にゼロ除算が発生する。`zip(operators, constants)` でペアワイズに検証し、`divide` + `0` を拒否すること。
