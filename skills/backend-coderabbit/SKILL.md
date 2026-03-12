@@ -234,6 +234,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **一意制約追加前の重複データ検証** `[新観点 from PR#480]` — `unique=True` を追加する migration で、既存の重複データを事前チェックする `RunPython` がないと本番適用時に `IntegrityError` が発生する。`RunPython` で重複を検出して `RuntimeError` で停止するか、重複解消ロジックを含めること
 - **`update_or_create()`はfull_clean()を呼ばない** → `Meta.constraints`に`CheckConstraint`を追加してDB側でも制約すること。特に`CharField`の正規表現バリデーションや`IntegerField`の範囲バリデーションが対象（→ `references/code-examples.md`）
 - **Migration インポート位置** `[新観点 from PR#480]` - `django.db.models` の汎用クラス（Count など）は関数内ではなくモジュールトップでインポートする。モデル取得（`apps.get_model()`）は関数内が必須だが、汎用クラスはトップレベルで OK。
+- **Python/JS間の数値精度不整合** `[新観点 from PR#560]` — Python の任意精度整数をそのまま許可すると、JS の `Number.MAX_SAFE_INTEGER` (2^53-1) を超える値がフロントエンドで丸められデータ破損する。数値バリデーションでは JS 安全整数範囲チェックを追加すること。
 
 ---
 
