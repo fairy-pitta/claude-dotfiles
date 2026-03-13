@@ -221,6 +221,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **isSafeInteger チェックの除算後誤判定** `[新観点 from PR#560]` — 連鎖演算（divide→add等）で除算後の合法な小数結果に対して `Number.isSafeInteger` チェックが false を返し null になるバグ。オーバーフロー判定は `previousAccumulator` と `nextValue` がともに safe integer の場合のみに限定すべき。
 - **成功パスのエラー状態クリア漏れ** `[新観点 from PR#560]` — プレビュー生成等で失敗時に `ruleFormError.value` を設定する場合、成功パスでも明示的に `null` にクリアしないとエラーメッセージが残り続ける。全分岐で状態遷移の対称性を確認する。
 - **バックエンド上限のフロントエンド実行時ガード** `[新観点 from PR#560]` — バックエンドに配列長上限（例: `_MAX_LIST_LENGTH = 100`）がある場合、フロントエンドの実行時バリデーションでも同じ上限を検証する。`canExecuteRule` だけに依存せず、`handleExecuteRule` でも二重チェックする。
+- **early return前の高コスト操作検出** `[新観点 from PR#569]` — early returnガードの前にdeep clone・大量データコピーなどの高コスト操作が配置されていないかチェック。バリデーション失敗時に無駄なメモリ確保が発生する。バリデーション通過後に移動する。
+- **ガード条件不一致による不要リアクティブ更新** `[新観点 from PR#569]` — 配列要素の存在チェック後、チェック結果に関わらずリアクティブ変数へ代入するパターンを検出。早期リターンで不要な更新を回避する。
 
 ---
 
