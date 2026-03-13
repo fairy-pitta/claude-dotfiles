@@ -1,15 +1,16 @@
 ---
 name: iterate-pr
-description: PRの未解決コメントを取得し、妥当性を確認。妥当でないものはPRにコメントで返信、妥当なものはplan modeで修正。全コメントに必ず対応（無視ゼロ）。
+description: PRの未解決コメントを取得し、妥当性判断 → Plan作成 → Codexレビューループ → ユーザー承認 → Codex実装 → Claude Code確認 → Post-Fixの一連フロー。
 ---
 
 # Iterate PR
 
 PRの未解決レビューコメントを全件取得し、**妥当性を判断してから対応**するスキル。
+Plan作成 → Codexレビューループ → ユーザー承認 → Codex実装 → Claude Code確認 → Post-Fix の流れで進める。
 
 **鉄則: どんな些細なコメントでも「無視」はしない。修正・Issue作成・返信のいずれかで必ず対応する。**
 
-**Announce at start:** "iterate-pr を開始します。未解決コメントの妥当性を確認して全件対応します。"
+**Announce at start:** "iterate-pr を開始します。未解決コメントの妥当性確認 → Plan → Codexレビュー → 承認 → 実装 → 確認 → Post-Fix の流れで進めます。"
 
 **コンテキスト管理:** 各ステップ開始前に80%超えなら `/compact` を実行。
 
@@ -56,7 +57,7 @@ Skill tool で `/create-worktree $BRANCH` を呼び出し、worktree に移動�
 
 ---
 
-## Step 3: ユーザー確認 → Plan Mode
+## Step 3: Plan作成 + ユーザー確認（妥当でないコメント）
 
 ### 3-1. 妥当でないコメントを提示
 
@@ -71,59 +72,281 @@ Skill tool で `/create-worktree $BRANCH` を呼び出し、worktree に移動�
 
 `レビュー観点候補` は「なぜセルフレビューで見落としたか」「次回どう検出するか」を考えて書く。
 
-### 3-3. Plan Mode で修正計画を提示
+### 3-3. Plan Mode で修正計画を作成
 
 **テンプレート:** `references/plan-template.md`
 
-**Plan mode を終了し、ユーザーの承認を得てから実装を開始する。承認前に一切コードを変更しない。**
+プランに含める項目:
+- **Goal**: 各コメントに対して何を修正するか
+- **Scope**: 変更対象ファイル一覧（絶対パス付き）
+- **Steps**: 順序付きの修正ステップ（各ステップに具体的な変更方針）
+- **Testing strategy**: 追加/変更するテスト
+- **Verification**: 各ステップの検証方法
+
+プランを `.claude/plan.md` に保存する。
+
+**この時点ではコードを一切変更しない。Plan Mode を終了して Step 4 へ。**
+
+#### Context check -> `/compact` if >= 80%
 
 ---
 
-## Step 4: 実装方法の選択と修正
+## Step 4: Codex レビューループ
 
-Plan Mode 承認後、ユーザーに実装方法を確認する:
+`.claude/plan.md` を Codex に送ってレビューを受け、LGTM が出るまで繰り返す。
+
+### 4-1. レビュー用プロンプトの構築と送信
+
+```bash
+CLAUDE_MD="$(pwd)/CLAUDE.md"
+PLAN_FILE=".claude/plan.md"
+
+PROMPT=$(mktemp /tmp/iterate-pr-review.XXXXXX)
+
+echo "# Project Rules" > "$PROMPT"
+[ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+echo -e "\n---\n# Implementation Plan to Review\n" >> "$PROMPT"
+cat "$PLAN_FILE" >> "$PROMPT"
+echo -e "\n---\n# PR Context\n" >> "$PROMPT"
+cat .claude/pr-context.md >> "$PROMPT"
+echo -e "\n---\n" >> "$PROMPT"
+cat << 'REVIEW_INSTRUCTIONS' >> "$PROMPT"
+You are reviewing an implementation plan that addresses PR review comments.
+Evaluate it against these criteria:
+
+1. **Architectural correctness**: Does it follow the project's existing patterns and conventions?
+2. **Completeness**: Does each review comment get properly addressed?
+3. **Step ordering**: Are dependencies between steps respected?
+4. **Testing coverage**: Are adequate tests planned with proper naming?
+5. **Risk assessment**: Are potential breaking changes identified?
+6. **Scope appropriateness**: Is the plan appropriately scoped — not over-engineered, not under-specified?
+
+If the plan is solid and ready for implementation, respond with exactly: LGTM
+
+If there are issues, list them concisely with specific suggestions for improvement.
+Each issue should be actionable — state what to change, not just what's wrong.
+REVIEW_INSTRUCTIONS
+
+codex exec - < "$PROMPT"
+rm -f "$PROMPT"
+```
+
+### 4-2. 結果の解析
+
+- **LGTM（またはアクショナブルな指摘なし）**: Step 5 へ
+- **指摘あり**: 4-3 のプラン修正エージェントへ
+
+### 4-3. プラン修正（サブエージェント）
+
+指摘がある場合、Agent tool でプラン修正エージェントを起動する:
+
+```
+description: "plan revision agent"
+prompt: |
+  あなたはプラン修正のサブエージェントです。
+
+  ## Codex からの指摘:
+  <Codex の出力をここに貼る>
+
+  ## タスク:
+  1. `.claude/plan.md` を Read tool で読む
+  2. プロジェクトの CLAUDE.md を読む（規約確認用）
+  3. 指摘を一つずつ検討し、プランを修正する
+  4. 修正後のプランを `.claude/plan.md` に Edit tool で書き戻す
+  5. 修正内容のサマリーを返す（何をどう変えたか）
+
+  プランの修正のみ行い、コードは一切変更しないこと。
+```
+
+修正サマリーを記録し、再度 4-1 に戻る。
+
+### 4-4. ループ制御
+
+- **最大 5 ラウンド**
+- 5 ラウンド後も指摘が残る場合: 残りの懸念事項をユーザーに提示して判断を仰ぐ
+
+### 4-5. ラウンドサマリー
+
+各ラウンド後に表示:
+
+```
+=== Codex Plan Review: Round <N>/<5> ===
+Status: LGTM / <N>件の指摘あり
+修正内容: <修正のサマリー>（修正した場合）
+```
+
+#### Context check -> `/compact` if >= 80%
+
+---
+
+## Step 5: ユーザー承認
+
+### 5-1. Codex 承認済みプランの提示
+
+`.claude/plan.md` の内容を全文表示する:
+
+```
+=== Codex-Approved Plan ===
+Codex review rounds: <N>
+
+<plan.md の全文>
+```
+
+### 5-2. ユーザーの判断を待つ
+
+**ユーザーが承認するまで一切コードを変更しない。**
+
+- **OK / 承認 / LGTM**: Step 6 へ（実装方法も選択）
+- **修正要望あり**: プランを修正 → Step 4 に戻って Codex 再レビュー（ラウンドカウントはリセット）
+- **却下 / キャンセル**: `.claude/plan.md` と `.claude/pr-context.md` を削除してスキル終了
+
+承認時に実装方法を確認する:
 
 ```
 実装方法を選んでください:
-1. Claude Code（このまま実装）[デフォルト]
-2. Codex exec（codex CLIで実装）
+1. Codex exec（codex CLIで実装）[デフォルト]
+2. Claude Code（このまま実装）
 ```
-
-### 4-A: Claude Code（デフォルト）
-
-Plan に従いコードを修正 → テスト通過を確認 → `/commit-push` でコミット＆プッシュ。
-
-### 4-B: Codex exec
-
-Plan と pr-context.md を結合してプロンプトファイルを作成し、`codex exec` で実装する。
-
-```bash
-# プロンプト作成
-PROMPT_FILE=$(mktemp /tmp/iterate-pr-codex.XXXXXX)
-cat <<'HEADER' > "$PROMPT_FILE"
-以下の修正計画に従ってコードを修正してください。
-修正後、全テストが通ることを確認してください。
-HEADER
-echo "" >> "$PROMPT_FILE"
-echo "# PR Context" >> "$PROMPT_FILE"
-cat .claude/pr-context.md >> "$PROMPT_FILE"
-echo "" >> "$PROMPT_FILE"
-echo "# 修正計画" >> "$PROMPT_FILE"
-# Plan の内容をここに追記
-echo "$PLAN_CONTENT" >> "$PROMPT_FILE"
-
-# 実行
-codex exec - < "$PROMPT_FILE"
-
-# クリーンアップ
-rm "$PROMPT_FILE"
-```
-
-Codex exec 完了後、差分を確認し `/commit-push` でコミット＆プッシュ。
 
 ---
 
-## Step 5: Post-Fix（3つの Agent を並列実行）
+## Step 6: 実装
+
+### 6-A: Codex exec（デフォルト）
+
+```bash
+CLAUDE_MD="$(pwd)/CLAUDE.md"
+PLAN_FILE=".claude/plan.md"
+
+PROMPT=$(mktemp /tmp/iterate-pr-exec.XXXXXX)
+
+echo "# Project Rules (MUST follow)" > "$PROMPT"
+[ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+echo -e "\n---\n# Implementation Plan\n" >> "$PROMPT"
+cat "$PLAN_FILE" >> "$PROMPT"
+echo -e "\n---\n# PR Context\n" >> "$PROMPT"
+cat .claude/pr-context.md >> "$PROMPT"
+echo -e "\n---\n" >> "$PROMPT"
+cat << 'EXEC_INSTRUCTIONS' >> "$PROMPT"
+Implement the above plan exactly as specified. This plan addresses PR review comments.
+
+Rules:
+1. Implement all steps in the order specified
+2. Follow the project conventions in the Project Rules strictly
+3. Add all planned tests
+4. Run tests after implementation to verify correctness
+5. Do not deviate from the plan — implement exactly what is specified
+6. Do not add extra features, refactoring, or improvements beyond the plan
+EXEC_INSTRUCTIONS
+
+codex exec - < "$PROMPT"
+rm -f "$PROMPT"
+```
+
+### 6-B: Claude Code
+
+Plan に従いコードを修正する。修正後、テスト通過を確認。
+
+#### Context check -> `/compact` if >= 80%
+
+---
+
+## Step 7: クロス確認
+
+**実装者と確認者を常に別にする。**
+
+- **Codex で実装した場合（6-A）** → Claude Code で確認（7-A）
+- **Claude Code で実装した場合（6-B）** → Codex で確認（7-B）
+
+### 7-A: Claude Code で確認（Codex実装時）
+
+#### 7-A-1. 差分とプランの照合
+
+1. `git diff` で全差分を確認
+2. `.claude/plan.md` を読み、プランの全ステップが実装されているか確認
+3. `.claude/pr-context.md` の各レビューコメントに対して、対応する修正が入っているか確認
+
+#### 7-A-2. テスト実行
+
+```bash
+# Backend
+cd backend && pytest
+
+# Frontend（変更がある場合）
+pnpm -C frontend run type-check && pnpm -C frontend run lint && pnpm -C frontend run test:unit
+```
+
+#### 7-A-3. 確認結果の報告
+
+```
+=== Implementation Verification (by Claude Code) ===
+
+レビューコメント対応状況:
+| # | コメント概要 | 対応状況 | 備考 |
+|---|------------|---------|------|
+| 1 | ... | ✅ 対応済 | ... |
+| 2 | ... | ❌ 未対応 | ... |
+
+テスト結果:
+- Backend: PASS / FAIL
+- Frontend: PASS / FAIL / SKIP
+```
+
+#### 7-A-4. 未対応・問題があった場合
+
+未対応のコメントや失敗テストがある場合、Claude Code で直接修正する。
+修正後、再度テスト実行で通過を確認。
+
+### 7-B: Codex で確認（Claude Code実装時）
+
+#### 7-B-1. 確認用プロンプトの構築と送信
+
+```bash
+CLAUDE_MD="$(pwd)/CLAUDE.md"
+PLAN_FILE=".claude/plan.md"
+DIFF=$(git diff HEAD~1)
+
+PROMPT=$(mktemp /tmp/iterate-pr-verify.XXXXXX)
+
+echo "# Project Rules" > "$PROMPT"
+[ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+echo -e "\n---\n# Implementation Plan\n" >> "$PROMPT"
+cat "$PLAN_FILE" >> "$PROMPT"
+echo -e "\n---\n# PR Context (review comments to address)\n" >> "$PROMPT"
+cat .claude/pr-context.md >> "$PROMPT"
+echo -e "\n---\n# Actual Diff\n" >> "$PROMPT"
+echo "$DIFF" >> "$PROMPT"
+echo -e "\n---\n" >> "$PROMPT"
+cat << 'VERIFY_INSTRUCTIONS' >> "$PROMPT"
+You are verifying that an implementation correctly addresses PR review comments.
+
+Check:
+1. Does each review comment in the PR Context get properly addressed by the diff?
+2. Are there any missing changes that the plan specified but the diff doesn't include?
+3. Are there extra changes not in the plan?
+4. Are there any bugs or issues in the implementation?
+
+If everything looks good, respond with: LGTM
+
+If there are issues, list them with specific details about what needs to be fixed.
+VERIFY_INSTRUCTIONS
+
+codex exec - < "$PROMPT"
+rm -f "$PROMPT"
+```
+
+#### 7-B-2. 結果の解析
+
+- **LGTM**: Step 7-C へ
+- **指摘あり**: Claude Code で修正 → 再度 Codex 確認（最大 3 ラウンド）
+
+### 7-C: コミット＆プッシュ
+
+全確認が通ったら `/commit-push` でコミット＆プッシュ。
+
+---
+
+## Step 8: Post-Fix（3つの Agent を並列実行）
 
 修正・コミット完了後、以下の3つの Agent を **並列で** 起動する。
 
@@ -175,7 +398,7 @@ pr-context.md の各修正コメントの「レビュー観点候補」を読み
 ### 全 Agent 完了後
 
 ```bash
-rm -f .claude/pr-context.md
+rm -f .claude/pr-context.md .claude/plan.md
 ```
 
 ---
@@ -186,6 +409,7 @@ rm -f .claude/pr-context.md
 === Iterate PR Complete ===
 
 未解決コメント総数: <N>件
+Codex review rounds: <N>
 
 対応結果:
   修正:       <N>件（うちスコープ外修正: <N>件）
@@ -211,3 +435,7 @@ rm -f .claude/pr-context.md
 - テストが失敗したままコミットしない
 - 妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない — Step 3 で必ず確認
 - Plan Mode に入る前に pr-context.md を書き出さない — Agent のデータソースとして必須
+- **ユーザー承認なしで Step 6 に進まない**
+- **Codex の出力を読まずに「LGTM」と判定しない**
+- **`codex exec` のプロンプトに CLAUDE.md を含めずに実行しない**
+- **実装者と確認者を同じにしない** — Codex実装→Claude Code確認、Claude Code実装→Codex確認
