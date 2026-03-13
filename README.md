@@ -47,7 +47,7 @@ cd ~/.claude/claude-dotfiles
 | コマンド               | 説明                           |
 | ---------------------- | ------------------------------ |
 | `/create-pr`           | PRを作成                       |
-| `/address-pr-comments` | PRの未解決コメントを取得し対応 |
+| `/iterate-pr`          | PRの未解決コメントを取得し対応 |
 | `/read-pr-comments`    | PRの未解決コメントを読み取り   |
 | `/resolve-comments`    | PRレビュースレッドを解決       |
 | `/fix-review`          | レビュー指摘を修正（1回）      |

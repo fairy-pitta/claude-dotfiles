@@ -78,7 +78,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 **前提: ユーザー承認不要。全て自律的に判断・実行する。**
 
-**コンテキスト管理:** 各ステップの完了後にコンテキスト使用率を確認し、**80%以上なら `/compact` を実行**してから次のステップへ進む。特に address-pr-comments でコード修正を行った後は必ず確認すること。
+**コンテキスト管理:** 各ステップの完了後にコンテキスト使用率を確認し、**80%以上なら `/compact` を実行**してから次のステップへ進む。特に iterate-pr でコード修正を行った後は必ず確認すること。
 
 #### 1. PR情報の取得とステータステーブルの表示
 
@@ -128,15 +128,15 @@ gh api graphql \
 
 #### 4a. 未解決コメントがある場合
 
-**Skill ツールを使って `address-pr-comments` スキルを呼び出す。**
+**Skill ツールを使って `iterate-pr` スキルを呼び出す。**
 
 ```
-Skill tool: skill="address-pr-comments"
+Skill tool: skill="iterate-pr"
 ```
 
-**ただし、pr-watch は自律運転モードのため、address-pr-comments の以下のステップをオーバーライドする:**
+**ただし、pr-watch は自律運転モードのため、iterate-pr の以下のステップをオーバーライドする:**
 
-| address-pr-comments のステップ | pr-watch でのオーバーライド |
+| iterate-pr のステップ | pr-watch でのオーバーライド |
 |---|---|
 | Step 0: Worktree作成 | **スキップ** — 現在のブランチで直接作業する |
 | Step 4-1: 妥当でないコメントをユーザーに提示 | **スキップ** — 自分で判断して即座にPRスレッドに返信 |
@@ -144,7 +144,7 @@ Skill tool: skill="address-pr-comments"
 | Step 4-3: Plan Mode で承認待ち | **スキップ** — Plan Mode に入らず直接修正する |
 | Step 5: Stop hook 待ち | **Stop hook はスキップ** — 修正完了後すぐに返信・resolve を自分で実行。**ただし Task C（レビュースキルへの観点追加）は実行する** |
 
-**つまり、address-pr-comments の Step 1〜3（取得・分類・妥当性判断）は従い、Step 4 は自律的に実行、Step 5 は Task C のみ実行する。**
+**つまり、iterate-pr の Step 1〜3（取得・分類・妥当性判断）は従い、Step 4 は自律的に実行、Step 5 は Task C のみ実行する。**
 
 **重要ルール:**
 - ユーザー承認を待たない。自分で妥当性を判断して進める
@@ -156,7 +156,7 @@ Skill tool: skill="address-pr-comments"
 - 妥当でないコメント → PRスレッドに理由を返信（ユーザー確認なしで直接返信）
 - 全件対応後、`@coderabbitai full review` をPRにコメント
 - **full review連投カウンタをリセットする**（コメント対応後の再リクエストは新規扱い）
-- **レビュースキルへの観点追加を必ず実行する**（address-pr-comments Step 5 Task C）:
+- **レビュースキルへの観点追加を必ず実行する**（iterate-pr Step 5 Task C）:
   - `backend/` の指摘 → `~/.claude/claude-dotfiles/skills/backend-coderabbit/SKILL.md` に追記
   - `frontend/` の指摘 → `~/.claude/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` に追記
   - フォーマット: `- **<観点名>** [新観点 from PR#<number>] - <チェック内容>。<理由>。<対策>。`
@@ -234,7 +234,7 @@ echo "PR #{PR_NUMBER} を閉じ、PR #${NEW_PR_NUMBER} を再作成しました�
 - **ユーザーに承認を求めない** — 自律運転モード
 - **Approve済みなのにループを続けない** — 即停止
 - **ステータステーブルを省略しない** — 毎ループ必ず出力する
-- **address-pr-comments でPlan Modeに入らない** — 自律モードではPlan Mode不要、直接修正する
+- **iterate-pr でPlan Modeに入らない** — 自律モードではPlan Mode不要、直接修正する
 - **テストが通らないままコミットしない**
 - **6回以上 full review を連投しない** — 5回無反応ならPR再作成
 - **コンテキスト80%超えのまま `/compact` せずに次ステップへ進まない**
