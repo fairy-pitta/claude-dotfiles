@@ -122,51 +122,66 @@ if $need_refresh; then
       fi
     fi
 
-    # Cache successful response
+    # Cache response (success or failure) to prevent hammering
+    now=$(date +%s)
     if [[ -n "$resp" ]] && echo "$resp" | jq -e '.five_hour' >/dev/null 2>&1; then
-      now=$(date +%s)
       echo "$resp" | jq --argjson ts "$now" '. + {cached_at: $ts}' > "$CACHE_FILE" 2>/dev/null
+    else
+      # Write failure cache so we don't retry every refresh
+      echo "{\"cached_at\": $now, \"error\": true}" > "$CACHE_FILE" 2>/dev/null
     fi
   fi
 fi
 
 # ── Parse cached usage data ──────────────────────────────────────
+cache_error=false
 if [[ -f "$CACHE_FILE" ]]; then
-  # Utilization is 0-100 (percentage)
-  five_pct=$(jq -r '.five_hour.utilization // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
-  seven_pct=$(jq -r '.seven_day.utilization // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
-  five_pct=$(printf "%.0f" "$five_pct" 2>/dev/null || echo "0")
-  seven_pct=$(printf "%.0f" "$seven_pct" 2>/dev/null || echo "0")
+  if jq -e '.error' "$CACHE_FILE" >/dev/null 2>&1; then
+    cache_error=true
+    five_pct="N/A"; seven_pct="N/A"
+    five_reset="API unavailable"; seven_reset="API unavailable"
+  else
+    # Utilization is 0-100 (percentage)
+    five_pct=$(jq -r '.five_hour.utilization // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
+    seven_pct=$(jq -r '.seven_day.utilization // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
+    five_pct=$(printf "%.0f" "$five_pct" 2>/dev/null || echo "0")
+    seven_pct=$(printf "%.0f" "$seven_pct" 2>/dev/null || echo "0")
 
-  # Format reset time (macOS BSD date)
-  format_reset() {
-    local raw=$1 fmt=$2
-    if [[ -z "$raw" ]] || [[ "$raw" = "null" ]]; then echo "?"; return; fi
-    # Strip fractional seconds and timezone offset, parse as UTC
-    local clean=$(echo "$raw" | sed 's/\.[0-9]*//;s/+00:00$//;s/Z$//')
-    local epoch=$(TZ=UTC date -jf "%Y-%m-%dT%H:%M:%S" "$clean" "+%s" 2>/dev/null || echo "")
-    if [[ -z "$epoch" ]]; then echo "?"; return; fi
-    local result=$(TZ=Asia/Singapore date -r "$epoch" "+$fmt" 2>/dev/null || echo "?")
-    echo "$result" | sed 's/AM/am/g;s/PM/pm/g'
-  }
+    # Format reset time (macOS BSD date)
+    format_reset() {
+      local raw=$1 fmt=$2
+      if [[ -z "$raw" ]] || [[ "$raw" = "null" ]]; then echo "?"; return; fi
+      # Strip fractional seconds and timezone offset, parse as UTC
+      local clean=$(echo "$raw" | sed 's/\.[0-9]*//;s/+00:00$//;s/Z$//')
+      local epoch=$(TZ=UTC date -jf "%Y-%m-%dT%H:%M:%S" "$clean" "+%s" 2>/dev/null || echo "")
+      if [[ -z "$epoch" ]]; then echo "?"; return; fi
+      local result=$(TZ=Asia/Singapore date -r "$epoch" "+$fmt" 2>/dev/null || echo "?")
+      echo "$result" | sed 's/AM/am/g;s/PM/pm/g'
+    }
 
-  five_reset_raw=$(jq -r '.five_hour.resets_at // .five_hour.reset_at // empty' "$CACHE_FILE" 2>/dev/null || true)
-  seven_reset_raw=$(jq -r '.seven_day.resets_at // .seven_day.reset_at // empty' "$CACHE_FILE" 2>/dev/null || true)
+    five_reset_raw=$(jq -r '.five_hour.resets_at // .five_hour.reset_at // empty' "$CACHE_FILE" 2>/dev/null || true)
+    seven_reset_raw=$(jq -r '.seven_day.resets_at // .seven_day.reset_at // empty' "$CACHE_FILE" 2>/dev/null || true)
 
-  five_reset=$(format_reset "$five_reset_raw" "%-l%p")
-  seven_reset=$(format_reset "$seven_reset_raw" "%b %-d at %-l%p")
+    five_reset=$(format_reset "$five_reset_raw" "%-l%p")
+    seven_reset=$(format_reset "$seven_reset_raw" "%b %-d at %-l%p")
+  fi
 fi
 
 # ── Output 3 lines ──────────────────────────────────────────────
 ctx_c=$(color_for_pct "$ctx_pct")
-five_c=$(color_for_pct "$five_pct")
-seven_c=$(color_for_pct "$seven_pct")
 
 # Line 1: model │ context │ lines │ branch
 echo "${ctx_c}${model_display}${RESET} ${GRAY}│${RESET} ${ctx_c}${ctx_pct}%${RESET} ${GRAY}│${RESET} ${ctx_c}+${lines_added}/-${lines_removed}${RESET} ${GRAY}│${RESET} ${ctx_c}${ICON_BRANCH} ${branch}${RESET}"
 
-# Line 2: 5-hour rate limit
-echo "${five_c}${ICON_CLOCK} 5h  $(progress_bar "$five_pct")  ${five_pct}%${RESET}  Resets ${five_reset} (Asia/Singapore)"
-
-# Line 3: 7-day rate limit
-echo "${seven_c}${ICON_CAL} 7d  $(progress_bar "$seven_pct")  ${seven_pct}%${RESET}  Resets ${seven_reset} (Asia/Singapore)"
+if $cache_error; then
+  # API unavailable - show grayed out
+  echo "${GRAY}${ICON_CLOCK} 5h  ▱▱▱▱▱▱▱▱▱▱  N/A  ${five_reset}${RESET}"
+  echo "${GRAY}${ICON_CAL} 7d  ▱▱▱▱▱▱▱▱▱▱  N/A  ${seven_reset}${RESET}"
+else
+  five_c=$(color_for_pct "$five_pct")
+  seven_c=$(color_for_pct "$seven_pct")
+  # Line 2: 5-hour rate limit
+  echo "${five_c}${ICON_CLOCK} 5h  $(progress_bar "$five_pct")  ${five_pct}%${RESET}  Resets ${five_reset} (Asia/Singapore)"
+  # Line 3: 7-day rate limit
+  echo "${seven_c}${ICON_CAL} 7d  $(progress_bar "$seven_pct")  ${seven_pct}%${RESET}  Resets ${seven_reset} (Asia/Singapore)"
+fi
