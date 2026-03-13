@@ -156,9 +156,13 @@ Skill tool: skill="iterate-pr"
 - 妥当でないコメント → PRスレッドに理由を返信（ユーザー確認なしで直接返信）
 - 全件対応後、`@coderabbitai full review` をPRにコメント
 - **full review連投カウンタをリセットする**（コメント対応後の再リクエストは新規扱い）
-- **レビュースキルへの観点追加を必ず実行する**（iterate-pr Step 5 Task C）:
-  - `backend/` の指摘 → `~/.claude/claude-dotfiles/skills/backend-coderabbit/SKILL.md` に追記
-  - `frontend/` の指摘 → `~/.claude/claude-dotfiles/skills/frontend-coderabbit/SKILL.md` に追記
+- **レビュースキルへの観点追加を必ず実行する**（iterate-pr Step 8 Agent C）:
+  - `backend/` の指摘 → `~/claude-dotfiles/skills/backend-coderabbit/checklists/` 配下の該当カテゴリファイルに追記:
+    - Architecture/Code Org/Syntax → `architecture.md`, Type Safety/Validation → `type-safety.md`
+    - DB/Migration → `db-performance.md`, Test → `test-quality.md`, Security/Errors → `security-errors.md`
+  - `frontend/` の指摘 → `~/claude-dotfiles/skills/frontend-coderabbit/checklists/` 配下の該当カテゴリファイルに追記:
+    - FSD/Code Org/Syntax → `fsd-architecture.md`, Type/State → `type-state.md`
+    - Error/Vue → `error-vue.md`, TanStack/Security → `tanstack-security.md`, Test → `test-quality.md`
   - フォーマット: `- **<観点名>** [新観点 from PR#<number>] - <チェック内容>。<理由>。<対策>。`
   - 追記後 claude-dotfiles にコミット＆プッシュ
 
