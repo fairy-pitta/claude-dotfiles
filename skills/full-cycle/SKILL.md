@@ -243,7 +243,7 @@ Use `/create-pr` skill conventions:
 - Link issues with `Closes #N` if applicable
 
 ```bash
-gh pr create --base <base-branch> --title "..." --body "..."
+gh pr create --base <base-branch> --title "..." --body "..." --assignee @me
 ```
 
 ### 5-4. Report
