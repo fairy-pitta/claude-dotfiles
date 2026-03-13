@@ -5,9 +5,10 @@ description: sora-review → 修正 → backend/frontend-coderabbit → 修正 �
 
 # Self Review Orchestrator
 
-スキルを1つ実行するたびに修正を挟み、**全スキルで指摘ゼロ**になるまでサイクルを繰り返す。
+レビュースキルを**サブエージェント**として起動し、構造化された結果を受け取って修正する。
+**全スキルで指摘ゼロ**になるまでサイクルを繰り返す。
 
-**Announce at start:** "self-review を開始します。スキルと修正を交互に回して全指摘ゼロを目指します。"
+**Announce at start:** "self-review を開始します。各レビューをサブエージェントで並列実行し、全指摘ゼロを目指します。"
 
 ---
 
@@ -17,6 +18,7 @@ description: sora-review → 修正 → backend/frontend-coderabbit → 修正 �
 
 - compact 後もループは継続する
 - compact のタイミング: 修正・テスト・コミットの各ブロック完了後
+- **サブエージェント活用により、レビュー自体のコンテキスト消費は最小限になる**
 
 ---
 
@@ -28,26 +30,24 @@ description: sora-review → 修正 → backend/frontend-coderabbit → 修正 �
 git diff --name-only origin/dev...HEAD
 ```
 
-| 変更ファイル     | 実行するステップ                                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `backend/` のみ  | sora-review → backend-coderabbit → codex review CLI                                               |
-| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI                      |
-| 両方             | sora-review → backend-coderabbit + frontend-coderabbit → frontend-architecture → codex review CLI |
+| 変更ファイル     | 実行するステップ                                                                |
+| ---------------- | ------------------------------------------------------------------------------- |
+| `backend/` のみ  | sora-review → backend-coderabbit → codex review CLI                             |
+| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI    |
+| 両方             | sora-review → backend-coderabbit + frontend-coderabbit(並列) → frontend-architecture → codex review CLI |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
 
-### STEP D/E 用の変数準備
+### STEP D 用の変数準備
 
 ```bash
 CLAUDE_MD="/Users/wao_singapore/forval-crossgear/CLAUDE.md"
 SKILLS_DIR="$HOME/.claude/skills"
 
-# STEP D用: sora スタイルプロンプト + plan
 SORA_PROMPT=$(mktemp /tmp/self-review-sora.XXXXXX)
 echo "# Project Rules (CLAUDE.md)" > "$SORA_PROMPT"
 cat "$CLAUDE_MD" >> "$SORA_PROMPT"
 echo -e "\n---\n" >> "$SORA_PROMPT"
-# planファイルがあれば含める（full-cycle経由の場合など）
 PLAN_FILE=".claude/plan.md"
 if [ -f "$PLAN_FILE" ]; then
   echo "# Implementation Plan" >> "$SORA_PROMPT"
@@ -55,8 +55,33 @@ if [ -f "$PLAN_FILE" ]; then
   echo -e "\n---\n" >> "$SORA_PROMPT"
 fi
 cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$SORA_PROMPT"
+```
+
+---
+
+## サブエージェント起動の共通ルール
+
+各レビューステップでは Agent tool を使い、以下の共通プロンプト構造で起動する:
 
 ```
+あなたはコードレビューのサブエージェントです。以下の手順で実行してください:
+
+1. スキルファイルを読む: Read tool で `<SKILL.md path>` を読み込む
+2. references/ 配下のファイルがあれば全て読む
+3. CLAUDE.md を読む（プロジェクトルール確認用）
+4. 変更ファイルを取得: `git diff --name-only origin/dev...HEAD` （該当パスでフィルタ）
+5. 各変更ファイルを Read tool で読む
+6. スキルの Checklist に従ってレビューを実施する
+7. 結果を Sub-Agent Output Format に従って返す
+
+コードの修正は行わず、検出と報告のみ行うこと。
+```
+
+### サブエージェントの出力を受け取った後の共通フロー
+
+1. **Findings を確認**: 「要対応」の件数を数える
+2. **0件なら** → `✅ 指摘なし` として次のSTEPへ（修正・コミットはスキップ）
+3. **1件以上なら** → 修正 → テスト → コミットの順で処理
 
 ---
 
@@ -68,37 +93,51 @@ cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$SORA_PROMPT"
 === Self Review Round <N> ===
 ```
 
-ラウンド内の各スキルは **レビュー → 修正 → テスト → コミット → compact確認** のセットで順番に処理する。
-
 ---
 
-### [STEP A] sora-review
+### [STEP A] sora-review（サブエージェント）
 
-#### A-1. sora-review を適用
+#### A-1. サブエージェント起動
 
-sora-review スキルのロジックを適用してレビューを実施する。
-
-- カジュアル・直接的なスタイルで指摘を列挙する
-- 指摘件数を記録する
+Agent tool で起動する:
 
 ```
-sora-review: <N>件
+description: "sora-review sub-agent"
+prompt: |
+  あなたはコードレビューのサブエージェントです。以下の手順で実行してください:
+
+  1. スキルファイルを読む: `$HOME/.claude/skills/sora-review/SKILL.md`
+  2. `$HOME/.claude/skills/sora-review/references/` 配下のファイルを全て読む
+  3. プロジェクトの CLAUDE.md を読む
+  4. `git diff --name-only origin/dev...HEAD` で変更ファイルを取得
+  5. 各変更ファイルを読んでレビューを実施
+  6. SKILL.md の「Sub-Agent Output Format」に従って結果を返す
+
+  コードの修正は行わず、検出と報告のみ行うこと。
 ```
 
-指摘が0件なら `sora-review: ✅ 指摘なし` として **STEP B へ進む**（修正・コミットはスキップ）。
+#### A-2. 結果の処理
 
-#### A-2. 修正
+サブエージェントから返された Findings を確認する:
 
-優先度順に修正を実施する:
+- `要対応` が0件 → `sora-review: ✅ 指摘なし` → STEP B へ
+- `要対応` が1件以上 → 修正フローへ
 
-1. 🔴 Critical / 【必須修正】
-2. 🟠 Major / 【要改善】
-3. 🟡 Minor
-4. 🔵 Trivial / nits
+```
+sora-review: <N>件（うち修正済み: <M>件、要対応: <K>件）
+```
+
+#### A-3. 修正（要対応がある場合）
+
+Findingsの優先度順に修正を実施する:
+
+1. 【重要】/ Critical
+2. Should Fix
+3. nits
 
 修正時はコードをRead toolで読んでから変更すること。指摘を機械的に適用しない。
 
-#### A-3. テスト実行（必須）
+#### A-4. テスト実行（必須）
 
 ```bash
 # Backend（変更がある場合）
@@ -112,7 +151,7 @@ pnpm -C frontend run test:unit
 
 テストが失敗した場合はコミットせず修正して再実行する。
 
-#### A-4. コミット
+#### A-5. コミット
 
 `/commit-push` スキルを使用してコミット＆プッシュする。
 
@@ -123,32 +162,67 @@ pnpm -C frontend run test:unit
 
 ---
 
-### [STEP B] backend-coderabbit / frontend-coderabbit
+### [STEP B] backend-coderabbit / frontend-coderabbit（サブエージェント・並列可能）
 
-#### B-1. coderabbit を適用
+#### B-1. サブエージェント起動
 
-変更ファイルのパスに応じてスキルを選択して適用する:
+変更ファイルのパスに応じてサブエージェントを起動する。
+**両方の場合は並列起動する（2つの Agent tool を同一メッセージで呼ぶ）。**
 
-- `backend/` のみ → backend-coderabbit の11観点を適用
-- `frontend/` のみ → frontend-coderabbit の11観点を適用
-- 両方 → backend-coderabbit を `backend/` ファイルに、frontend-coderabbit を `frontend/` ファイルに同時適用
+**backend-coderabbit:**
+```
+description: "backend-coderabbit sub-agent"
+prompt: |
+  あなたはバックエンドコードレビューのサブエージェントです。
+
+  1. スキルファイルを読む: `$HOME/.claude/skills/backend-coderabbit/SKILL.md`
+  2. `$HOME/.claude/skills/backend-coderabbit/references/` 配下のファイルを全て読む
+  3. `$HOME/.claude/skills/references/review-format.md` を読む（共通フォーマット）
+  4. プロジェクトの CLAUDE.md を読む
+  5. `git diff --name-only origin/dev...HEAD -- 'backend/'` で変更ファイルを取得
+  6. 各変更ファイルを読んでレビューを実施（Core Checklist は全項目必須）
+  7. SKILL.md の「Sub-Agent Output Format」に従って結果を返す
+
+  コードの修正は行わず、検出と報告のみ行うこと。
+```
+
+**frontend-coderabbit:**
+```
+description: "frontend-coderabbit sub-agent"
+prompt: |
+  あなたはフロントエンドコードレビューのサブエージェントです。
+
+  1. スキルファイルを読む: `$HOME/.claude/skills/frontend-coderabbit/SKILL.md`
+  2. `$HOME/.claude/skills/frontend-coderabbit/references/` 配下のファイルを全て読む
+  3. `$HOME/.claude/skills/references/review-format.md` を読む（共通フォーマット）
+  4. プロジェクトの CLAUDE.md を読む
+  5. `git diff --name-only origin/dev...HEAD -- 'frontend/'` で変更ファイルを取得
+  6. 各変更ファイルを読んでレビューを実施（Core Checklist は全項目必須）
+  7. SKILL.md の「Sub-Agent Output Format」に従って結果を返す
+
+  コードの修正は行わず、検出と報告のみ行うこと。
+```
+
+#### B-2. 結果の処理
+
+各サブエージェントから返された Findings を集約する:
 
 ```
-backend-coderabbit:  <N>件
-frontend-coderabbit: <N>件
+backend-coderabbit:  <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
+frontend-coderabbit: <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
 ```
 
 両方ゼロなら `✅ 指摘なし` として **STEP C へ進む**。
 
-#### B-2. 修正
+#### B-3. 修正
 
-A-2 と同様に優先度順で修正する。
+Severity順に修正する: 🔴 → 🟠 → 🟡 → 🔵
 
-#### B-3. テスト実行（必須）
+#### B-4. テスト実行（必須）
 
-A-3 と同じコマンドで全テストを実行する。
+A-4 と同じコマンドで全テストを実行する。
 
-#### B-4. コミット
+#### B-5. コミット
 
 `/commit-push` スキルを使用してコミット＆プッシュする。
 
@@ -156,29 +230,55 @@ A-3 と同じコマンドで全テストを実行する。
 
 ---
 
-### [STEP C] frontend-architecture（frontend/ がある場合のみ）
+### [STEP C] frontend-architecture（サブエージェント、frontend/ がある場合のみ）
 
 backend のみの場合はこの STEP をスキップして **STEP D へ**。
 
-#### C-1. frontend-architecture を適用
-
-frontend-architecture スキルのロジックを適用して CODING_STANDARDS.md の全ルールをチェックする。
+#### C-1. サブエージェント起動
 
 ```
-frontend-architecture: <N>件
+description: "frontend-architecture sub-agent"
+prompt: |
+  あなたはフロントエンドアーキテクチャチェックのサブエージェントです。
+
+  1. スキルファイルを読む: `$HOME/.claude/skills/frontend-architecture/SKILL.md`
+  2. プロジェクトの CLAUDE.md と CODING_STANDARDS.md を読む
+  3. `git diff --name-only origin/dev...HEAD -- 'frontend/src/'` で変更ファイルを取得
+  4. SKILL.md の全7カテゴリのチェックを実施
+  5. 以下の構造で結果を返す:
+
+  ## Findings
+  | # | File | Severity | Category | Rule | Issue | Status |
+  |---|------|----------|----------|------|-------|--------|
+
+  ## Out of Scope
+  | # | Item | Reason |
+  |---|------|--------|
+
+  ## Summary
+  - Total findings: N
+  - 🔴 MUST: N / 🟠 SHOULD: N / 🟡 Soft: N / 🔵 MAY: N
+
+  コードの修正は行わず、検出と報告のみ行うこと。
+```
+
+#### C-2. 結果の処理
+
+```
+frontend-architecture: <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
 ```
 
 0件なら `✅ 指摘なし` として修正・コミットをスキップ。
 
-#### C-2. 修正
+#### C-3. 修正
 
-A-2 と同様に優先度順で修正する。
+Severity順に修正する。
 
-#### C-3. テスト実行（必須）
+#### C-4. テスト実行（必須）
 
-A-3 と同じコマンドで全テストを実行する。
+A-4 と同じコマンドで全テストを実行する。
 
-#### C-4. コミット
+#### C-5. コミット
 
 `/commit-push` スキルを使用してコミット＆プッシュする。
 
@@ -186,9 +286,10 @@ A-3 と同じコマンドで全テストを実行する。
 
 ---
 
-### [STEP D] codex review CLI（常に実行）
+### [STEP D] codex review CLI（常に実行・Bash直接）
 
 `codex review` CLI を使い、Claude 系スキルとは異なる視点でコードレビューを実施する。
+**これはサブエージェントではなくBash直接実行（外部CLIツール）。**
 
 #### D-1. codex review 実行
 
@@ -217,11 +318,11 @@ codex review: <N>件（うち妥当: <M>件、除外: <K>件）
 
 #### D-3. 修正
 
-A-2 と同様に優先度順で修正する。
+A-3 と同様に優先度順で修正する。
 
 #### D-4. テスト実行（必須）
 
-A-3 と同じコマンドで全テストを実行する。
+A-4 と同じコマンドで全テストを実行する。
 
 #### D-5. コミット
 
@@ -272,7 +373,9 @@ rm -f "$SORA_PROMPT"
 
 - **コンテキスト80%超えのまま `/compact` せずに次ステップへ進まない**
 - **テストが失敗したままコミットしない**
-- **スキルのチェックリストを実際に適用せずに「指摘なし」と判定しない**
+- **サブエージェントのFindingsを読まずに「指摘なし」と判定しない**
 - **`fix: レビュー対応` 等の抽象的なコミットメッセージを使わない**
 - **STEP A → B → C → D の順番を変えない**
 - **1ステップでも指摘があればラウンドを最初から回し直す**
+- **サブエージェントにコード修正をさせない（検出と報告のみ）**
+- **backend + frontend coderabbit を並列起動できるのに直列で実行しない**

@@ -225,3 +225,45 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - `v-for`のindex keyを見逃す
 - Floating Promiseを見逃す
 - コードdiffなしに修正案を提示
+
+---
+
+## Sub-Agent Output Format
+
+サブエージェントとして実行された場合、以下の構造で結果を返す。
+
+### 出力構造
+
+```markdown
+## Findings
+
+| # | File | Severity | Checklist ID | Issue | Status |
+|---|------|----------|-------------|-------|--------|
+| 1 | `path/to/file:line` | 🔴/🟠/🟡/🔵 | Core/Ext ID | 簡潔な説明 | 修正済み/要対応 |
+
+### Details
+
+（各Findingの詳細: CodeRabbitフォーマットで修正案diff付き）
+
+## Out of Scope（スコープ外と判断したもの）
+
+| # | Item | Reason |
+|---|------|--------|
+| 1 | 説明 | スコープ外の理由 |
+
+## Summary
+
+- **Total findings:** N
+- **修正済み:** N（サブエージェントが自動修正したもの）
+- **要対応:** N（人間の判断が必要なもの）
+- **スコープ外:** N
+- **Severity分布:** 🔴 N / 🟠 N / 🟡 N / 🔵 N
+```
+
+### ルール
+
+- FindingsはSeverity順（🔴 → 🟠 → 🟡 → 🔵）
+- Checklist IDはCore/Extended Checklistの項目名と対応させる
+- 「修正済み」は実際にコードを変更した場合のみ
+- スコープ外の理由は具体的に（例: 「既存コードの問題で今回の変更範囲外」「別Feature/PRの責任範囲」「広範なリファクタが必要で個別修正は不適切」）
+- Detailsは通常のCodeRabbitフォーマット（category + severity + title + explanation + diff）を使用
