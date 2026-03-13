@@ -138,6 +138,7 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **QuerySet 戻り値型の明示** `[新観点 from PR#480]` - `# type: ignore[return]` で型チェックを回避していないか確認。CLAUDE.md「型ヒント必須」に従い `QuerySet[Model]` の戻り値型を明示すること。
 - **Serializer SerializerMethodField の戻り値型精度** `[新観点 from PR#480]` - `SerializerMethodField` のメソッドで `Optional[str]` を返しているが、渡すフィールドが non-Optional な場合は `str` に絞れる。エンティティのフィールド定義と照合して型精度を上げること。
 - **EventStream型定義の網羅性** `[新観点 from PR#486]` — AWS Bedrock等の外部サービスのストリームイベント型が、チャンクだけでなく例外イベント型も含んでいるかチェック。TypeDictのtotal=Falseの適切な使用。
+- **DTO型とUseCase分岐の一致性** `[新観点 from PR#570]` — UseCaseで条件分岐する場合、DTOの型がその分岐を反映しているかチェック。Optionalで済ませずUnion型で意図を明示する
 
 ### Security（詳細）
 
@@ -172,6 +173,8 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **リトライ間隔パラメータの最小値バリデーション** `[新観点 from PR#546]` — リトライ間隔パラメータの最小値バリデーション。0を許可すると即時リトライによる無限ループやリソース飢餓が発生する可能性がある。リトライ系パラメータは最低1秒以上を強制。
 - **同一usecase内の複数分岐のエラーハンドリング統一** `[新観点 from PR#546]` — 同一usecase内の複数分岐で同じドメインメソッドを呼ぶ場合、全分岐でエラーハンドリングが統一されているかチェック。一方の分岐だけtry-exceptがない場合、Result契約を破る。
 - **同一エラーコードの例外型統一** `[新観点 from PR#546]` — 同じエラーコード（例: `NOT_APPLICANT`）を複数usecaseで返す場合、例外型まで統一されているか確認する。`ValidationError` と `PermissionDeniedError` の混在は API の HTTP ステータス差異を生み、呼び出し側を不安定にする。
+- **DRFの内部APIアクセス検出** `[新観点 from PR#570]` — DRFの `_declared_fields` や `_meta` 等のアンダースコア接頭辞属性を直接操作していないかチェック。バージョンアップで互換性が壊れるリスクがある。継承 + `get_fields()` オーバーライドで代替する
+- **条件付き必須フィールドの検出** `[新観点 from PR#570]` — あるフィールドの値によって他フィールドの必須/不要が変わるケースで、常時requiredにしていないかチェック。`validate()` メソッドで条件分岐する
 
 ### Database Performance（詳細）
 
@@ -203,6 +206,9 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 - **バリデーションテストのエラー値検証** `[新観点 from PR#480]` — `assert error is not None` だけでなく `str(error) == ErrorConstants.XXX` で具体的な値を検証。別エラーへの退行を検知する
 - **統合テストのクエリバジェット統一** `[新観点 from PR#480]` — 一覧エンドポイントにクエリ上限があるなら詳細エンドポイントにも `django_assert_max_num_queries` を設定。N+1退行を検知するため全エンドポイントに統一して適用する
 - **mock の autospec 設定** `[新観点 from PR#496]` - テストで外部ライブラリ（boto3等）をmockする際に `autospec=True` が設定されているかチェックする。autospecにより実際のインターフェースと一致しない呼び出しを早期検出できる。
+- **POST/PUT/DELETEエンドポイントのCSRFテスト** `[新観点 from PR#570]` — 新規POST/PUT/DELETEエンドポイント追加時、未認証テストだけでなくCSRFトークンなし/あり双方のテストがあるかチェック
+- **Falsy値の境界テスト** `[新観点 from PR#570]` — `is not None`で分岐する箇所でfalsy値(0, "")が正しく処理されるかの回帰テスト追加を確認する
+- **既存エンドポイントのCSRFテスト漏れ** `[新観点 from PR#570]` — 新機能追加時に関連する既存テストファイルのCSRFカバレッジも確認する
 
 ### Code Organization & DRY（詳細）
 
