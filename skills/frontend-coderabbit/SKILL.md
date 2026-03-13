@@ -114,6 +114,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **金額にFloat演算禁止** — 金額に浮動小数点演算を直接使わない。`Amount`型（branded integer）経由
 - **エンティティ型との型ドリフト防止** `[新観点 from PR#472]` — features層でentities層の型フィールドと一致するインライン型定義（例: `{ key: string; label: string }`）がないかチェックする。Pick/Omitで元のエンティティ型を参照すべき。インライン型はエンティティ型の変更に追従できずドリフトの原因になる
 - **新規entity作成時のapi/schema.tsの有無チェック** `[新観点 from PR#526]` — 新規entityを作成する際、`api/schema.ts`にZodスキーマが定義されているか確認する。権限・認証系APIレスポンスを含め、全てのAPIレスポンスにランタイム検証（Zodスキーマ）を設けること。CODING_STANDARDS.mdのスキーマ規約違反になる
+- **内部関数の引数型の広さ** `[新観点 from PR#569]` — 内部関数でも引数型が実際の使用パターンより広くないかチェック。callerが特定のサブタイプのみ渡す関数は `Extract` で型を絞る。
 
 ### TanStack Vue Query（詳細）
 
@@ -130,6 +131,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。
 - **module-level singletonのページ遷移時リセット** `[新観点 from PR#510]` — module-level singleton（composable内のmodule-scope ref）の状態がページ遷移時に適切にリセットされるか確認する。onUnmountedでのクリーンアップを忘れないこと。
 - **watcher間のエラークリア一貫性** `[新観点 from PR#528]` — 複数フィールドにwatcherを設定する場合、エラー状態のクリア処理が一貫しているか確認する。片方のwatcherだけ `submitError` をクリアし、もう片方が漏れているケースがないか。
+- **watch の deep オプションのスコープ** `[新観点 from PR#569]` — 複数ソースのwatchで `{ deep: true }` を使う場合、プリミティブrefとオブジェクトrefが混在していないかチェック。混在時はwatcherを分離してdeepの適用範囲を最小化する。
 - **モジュールレベルキャッシュの認証境界ライフサイクル** `[新観点 from PR#523]` — メモリキャッシュ（module-level変数）を導入した際、ログアウト・セッション切れ・401/403エラー等の認証境界で適切にクリアされるかチェックする。キャッシュ追加時に無効化ポイントの洗い出しをセットで行わないと、古い値が残り続けてセキュリティ・機能バグになる。`invalidate`関数をexportし、認証境界で呼び出すこと
 
 ### Error Handling（詳細）
@@ -142,6 +144,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **ユーザー向けエラーメッセージ** — エラー時にユーザーへの通知（toast等）が適切に行われているか
 - **entities層のエラー文字列定数化** `[新観点 from PR#480]` — `throw new Error("...")` の生文字列をエラーコード定数経由に変更しているか確認。エラーパイプライン（コード化→意味付け→表示）を迂回してはならない
 - **SSEバッファ残り処理** `[新観点 from PR#486]` — ReadableStreamのdone時にbufferに未処理データが残っていないかチェック。最後のチャンクが改行で終わらない場合にデータ欠落する。
+- **配列の境界外アクセスパターン** `[新観点 from PR#569]` — `array[index]` がundefinedになるケースでサイレントに失敗する実装をチェック。配列要素の存在チェック時に「要素がまだ存在しないケース」も考慮しているか確認する。未存在時はcreate/pushすべきか検討。
+- **try/catch スコープの肥大化** `[新観点 from PR#569]` — 複数の非同期操作が1つのtry/catchに入っていないかチェック。後続操作の失敗が先行操作の失敗として誤報告される。各操作のエラーハンドリングをスコープ分離する。
 
 ### Vue.js Patterns（詳細）
 
@@ -177,6 +181,8 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **ソートテストの non-null assertion** `[新観点 from PR#480]` - ループ範囲が保証されているソート検証テストで `data?.[i+1].createdAt.getTime() ?? 0` のパターンは false positive のリスク。`expect(data!.length).toBeGreaterThanOrEqual(2)` を追加し `data![i]`/`data![i+1]` の non-null assertion を使う。
 - **テストモック正規表現の厳密化** `[新観点 from PR#480]` — Playwrightの `page.route()` やMSWの正規表現パターンに `$` アンカーを付けているか確認。広すぎるパターンは将来エンドポイント追加時に衝突する
 - **実装追加時のテストケース同期** `[新観点 from PR#555]` — 既存の判定関数やユーティリティに新しいケース（例: concatColumns）を追加した場合、対応するテストファイルにもケースが追加されているか確認する。実装とテストの不一致は見落としやすい。
+- **テストファイルのFSDインポートルール** `[新観点 from PR#569]` — テストファイルでも内部パス直接importではなくバレルエクスポート経由でimportしているかチェック。FSDの「内部直接import禁止」ルールはテストにも適用される。
+- **timeout スコープの最小化** `[新観点 from PR#569]` — `describe` 全体に `{ timeout: N }` を設定していないか確認。遅いテストケースが1つだけなら、そのテストの `it` ブロックにのみ `{ timeout: N }` を設定する。describe全体への設定は他のテストの潜在的なタイムアウト問題を隠蔽する。
 
 ### Security（セキュリティ）
 
@@ -202,6 +208,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **バリデーション正規表現の重複** `[新観点 from PR#528]` — バリデーションロジックの正規表現や条件を複数箇所（ユーティリティとコンポーネント等）で重複定義していないか確認する。共通の定数・関数にまとめてシングルソースオブトゥルースを維持する。
 - **バリデーション関数のパラメータ網羅性** `[新観点 from PR#555]` — バリデーション関数が全入力パラメータ（特にインデックス系）の範囲チェックを実施しているか確認する。ヘッダー名の検証はするがインデックスの範囲チェックを忘れがち。入力値ごとにバリデーションの有無を対応表で確認する。
 - **boolean XOR パターンの可読性** `[新観点 from PR#555]` — `a === b` で両方true/両方falseを除外するXORパターンは一見分かりにくい。排他入力チェック等で使用する場合はインラインコメントで意図を説明する。
+- **条件分岐の等価性** `[新観点 from PR#569]` — ネストした条件分岐が単一条件と等価でないかチェック。複数のif文で同じ変数を分岐している場合、真理値表で等価性を確認する。
 - **dialog アクセシブル名の確認** `[新観点 from PR#497]` — `role="dialog"` または `role="alertdialog"` の要素が `aria-labelledby` か `aria-label` のいずれかを持つことを確認。両方 `undefined` の場合はスクリーンリーダーが認識できない。共通コンポーネントのデフォルト値設定が必要か確認する。
 - **Vue Transition + watch(flush:"post") でのフォーカスタイミング** `[新観点 from PR#497]` — Transition アニメーション中の watch コールバックでフォーカスを設定する場合、`nextTick + requestAnimationFrame` でラップしてレイアウト完了後に実行することを確認する。
 - **モーダル/ダイアログのフォーカスフォールバック** `[新観点 from PR#497]` — フォーカス可能要素が存在しない場合（hideCloseButton=true + slot 内に focusable 要素なし）でもモーダルにフォーカスが当たるよう、コンテナに `tabindex="-1"` を付与してフォールバックフォーカスが設定されているか確認する。

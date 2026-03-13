@@ -79,9 +79,47 @@ Skill tool で `/create-worktree $BRANCH` を呼び出し、worktree に移動�
 
 ---
 
-## Step 4: 修正の実装
+## Step 4: 実装方法の選択と修正
+
+Plan Mode 承認後、ユーザーに実装方法を確認する:
+
+```
+実装方法を選んでください:
+1. Claude Code（このまま実装）[デフォルト]
+2. Codex exec（codex CLIで実装）
+```
+
+### 4-A: Claude Code（デフォルト）
 
 Plan に従いコードを修正 → テスト通過を確認 → `/commit-push` でコミット＆プッシュ。
+
+### 4-B: Codex exec
+
+Plan と pr-context.md を結合してプロンプトファイルを作成し、`codex exec` で実装する。
+
+```bash
+# プロンプト作成
+PROMPT_FILE=$(mktemp /tmp/iterate-pr-codex.XXXXXX)
+cat <<'HEADER' > "$PROMPT_FILE"
+以下の修正計画に従ってコードを修正してください。
+修正後、全テストが通ることを確認してください。
+HEADER
+echo "" >> "$PROMPT_FILE"
+echo "# PR Context" >> "$PROMPT_FILE"
+cat .claude/pr-context.md >> "$PROMPT_FILE"
+echo "" >> "$PROMPT_FILE"
+echo "# 修正計画" >> "$PROMPT_FILE"
+# Plan の内容をここに追記
+echo "$PLAN_CONTENT" >> "$PROMPT_FILE"
+
+# 実行
+codex exec - < "$PROMPT_FILE"
+
+# クリーンアップ
+rm "$PROMPT_FILE"
+```
+
+Codex exec 完了後、差分を確認し `/commit-push` でコミット＆プッシュ。
 
 ---
 
