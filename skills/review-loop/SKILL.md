@@ -1,11 +1,12 @@
 ---
 name: review-loop
-description: Repeat backend-coderabbit or frontend-coderabbit reviews until all findings on the current branch are addressed.
+description: Repeat backend-coderabbit or frontend-coderabbit reviews (5 parallel sub-agents each) until all findings on the current branch are addressed.
 ---
 
 # Review Loop
 
 backend-coderabbit / frontend-coderabbit スキルを繰り返し実行し、指摘箇所を全て解消するまでループするスキル。
+各レビューは **5並列サブエージェント** で実行される。
 
 ## Process
 
@@ -17,19 +18,54 @@ git diff --name-only origin/dev...HEAD
 
 | 変更ファイル     | 使用するスキル                   |
 | ---------------- | -------------------------------- |
-| `backend/` のみ  | `/backend-coderabbit`            |
-| `frontend/` のみ | `/frontend-coderabbit`           |
-| 両方             | 両スキルを各ファイルに対して適用 |
+| `backend/` のみ  | backend-coderabbit (5並列)       |
+| `frontend/` のみ | frontend-coderabbit (5並列)      |
+| 両方             | 両スキル (最大10並列)            |
 
 ### 1. 初回レビュー実行
 
-上記で決定したスキルを呼び出して実行する。
+上記で決定したスキルの **カテゴリ別チェックリストを直接サブエージェントで並列起動** する。
+
+**Backend (5並列):**
+
+| Agent | checklist |
+|-------|-----------|
+| `backend-review: architecture` | `$HOME/.claude/skills/backend-coderabbit/checklists/architecture.md` |
+| `backend-review: type-safety` | `$HOME/.claude/skills/backend-coderabbit/checklists/type-safety.md` |
+| `backend-review: db-performance` | `$HOME/.claude/skills/backend-coderabbit/checklists/db-performance.md` |
+| `backend-review: test-quality` | `$HOME/.claude/skills/backend-coderabbit/checklists/test-quality.md` |
+| `backend-review: security-errors` | `$HOME/.claude/skills/backend-coderabbit/checklists/security-errors.md` |
+
+**Frontend (5並列):**
+
+| Agent | checklist |
+|-------|-----------|
+| `frontend-review: fsd-architecture` | `$HOME/.claude/skills/frontend-coderabbit/checklists/fsd-architecture.md` |
+| `frontend-review: type-state` | `$HOME/.claude/skills/frontend-coderabbit/checklists/type-state.md` |
+| `frontend-review: error-vue` | `$HOME/.claude/skills/frontend-coderabbit/checklists/error-vue.md` |
+| `frontend-review: tanstack-security` | `$HOME/.claude/skills/frontend-coderabbit/checklists/tanstack-security.md` |
+| `frontend-review: test-quality` | `$HOME/.claude/skills/frontend-coderabbit/checklists/test-quality.md` |
+
+各サブエージェントの共通プロンプト:
+```
+あなたはコードレビューのサブエージェントです。
+
+1. チェックリストを読む: `<checklist_path>`
+2. コード例示を読む: `<skill_dir>/references/code-examples.md`
+3. 共通フォーマットを読む: `$HOME/.claude/skills/references/review-format.md`
+4. プロジェクトの CLAUDE.md を読む
+5. `git diff --name-only origin/dev...HEAD -- '<path_filter>'` で変更ファイルを取得
+6. 各変更ファイルを読んでレビューを実施（全項目必須）
+7. 結果をテーブル + 詳細フォーマットで返す
+
+コードの修正は行わず、検出と報告のみ行うこと。
+```
 
 レビュー結果を確認し、指摘事項を収集する。
 
 ### 2. 指摘事項の分析
 
-レビュー結果から以下を抽出：
+全サブエージェントのレビュー結果を集約・重複排除し、以下を抽出：
 
 - 🔴 Critical（必須修正）
 - 🟠 Major（要修正）
@@ -56,7 +92,7 @@ git diff --name-only origin/dev...HEAD
 
 ### 4. 再レビュー
 
-修正完了後、再度同じスキルを実行。
+修正完了後、再度同じカテゴリ別サブエージェントを並列起動する。
 
 ### 5. ループ判定
 
@@ -75,12 +111,13 @@ git diff --name-only origin/dev...HEAD
 ```markdown
 ## Loop <N> Results
 
-**レビュー指摘数:**
+**レビュー指摘数（カテゴリ別）:**
 
-- 🔴 Critical: <N>
-- 🟠 Major: <N>
-- 🟡 Minor: <N>
-- 🔵 Trivial: <N>
+| Category | 🔴 | 🟠 | 🟡 | 🔵 | 計 |
+|----------|-----|-----|-----|-----|-----|
+| architecture | <N> | <N> | <N> | <N> | <N> |
+| type-safety | <N> | <N> | <N> | <N> | <N> |
+| ... | ... | ... | ... | ... | ... |
 
 **修正した項目:**
 
@@ -108,7 +145,7 @@ git diff --name-only origin/dev...HEAD
 
 ## Critical Constraints
 
-- **毎回必ず backend-coderabbit / frontend-coderabbit スキルを呼び出すこと**（直接レビューを行わない）
+- **毎回必ずカテゴリ別チェックリストのサブエージェントを並列起動すること**（直接レビューを行わない）
 - 修正はスキルの指摘に基づくこと
 - 新しい問題を導入しないよう注意
 - 最大20回のループで終了

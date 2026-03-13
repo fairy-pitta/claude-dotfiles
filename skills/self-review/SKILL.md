@@ -1,6 +1,6 @@
 ---
 name: self-review
-description: sora-review → 修正 → backend/frontend-coderabbit → 修正 → frontend-architecture → 修正 → codex review CLI → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
+description: sora-review → 修正 → backend/frontend-coderabbit(5並列×2) → 修正 → frontend-architecture → 修正 → codex review CLI → 修正 の順でスキルと修正を交互に実行し、全スキルで指摘ゼロになるまでループ。各ステップ後にauto-compact。
 ---
 
 # Self Review Orchestrator
@@ -32,9 +32,9 @@ git diff --name-only origin/dev...HEAD
 
 | 変更ファイル     | 実行するステップ                                                                |
 | ---------------- | ------------------------------------------------------------------------------- |
-| `backend/` のみ  | sora-review → backend-coderabbit → codex review CLI                             |
-| `frontend/` のみ | sora-review → frontend-coderabbit → frontend-architecture → codex review CLI    |
-| 両方             | sora-review → backend-coderabbit + frontend-coderabbit(並列) → frontend-architecture → codex review CLI |
+| `backend/` のみ  | sora-review → backend-coderabbit(5並列) → codex review CLI                      |
+| `frontend/` のみ | sora-review → frontend-coderabbit(5並列) → frontend-architecture → codex review CLI |
+| 両方             | sora-review → backend(5並列) + frontend(5並列) → frontend-architecture → codex review CLI |
 
 変更ファイルが0件の場合は「レビュー対象の変更がありません」と報告して終了。
 
@@ -162,57 +162,83 @@ pnpm -C frontend run test:unit
 
 ---
 
-### [STEP B] backend-coderabbit / frontend-coderabbit（サブエージェント・並列可能）
+### [STEP B] backend-coderabbit / frontend-coderabbit（5並列サブエージェント）
+
+**STEP B はカテゴリごとのサブエージェントを直接起動する（最大10並列）。**
 
 #### B-1. サブエージェント起動
 
 変更ファイルのパスに応じてサブエージェントを起動する。
-**両方の場合は並列起動する（2つの Agent tool を同一メッセージで呼ぶ）。**
+**backend + frontend 両方の場合は最大10エージェントを並列起動する。**
 
-**backend-coderabbit:**
+各サブエージェントの共通プロンプト:
+
 ```
-description: "backend-coderabbit sub-agent"
-prompt: |
-  あなたはバックエンドコードレビューのサブエージェントです。
+あなたはコードレビューのサブエージェントです。
 
-  1. スキルファイルを読む: `$HOME/.claude/skills/backend-coderabbit/SKILL.md`
-  2. `$HOME/.claude/skills/backend-coderabbit/references/` 配下のファイルを全て読む
-  3. `$HOME/.claude/skills/references/review-format.md` を読む（共通フォーマット）
-  4. プロジェクトの CLAUDE.md を読む
-  5. `git diff --name-only origin/dev...HEAD -- 'backend/'` で変更ファイルを取得
-  6. 各変更ファイルを読んでレビューを実施（Core Checklist は全項目必須）
-  7. SKILL.md の「Sub-Agent Output Format」に従って結果を返す
+1. チェックリストを読む: `<checklist_path>`
+2. コード例示を読む: `<code-examples_path>`
+3. 共通フォーマットを読む: `$HOME/.claude/skills/references/review-format.md`
+4. プロジェクトの CLAUDE.md を読む
+5. `git diff --name-only origin/dev...HEAD -- '<path_filter>'` で変更ファイルを取得
+6. 各変更ファイルを読んでレビューを実施（チェックリストの全項目必須）
+7. 結果を以下のフォーマットで返す:
 
-  コードの修正は行わず、検出と報告のみ行うこと。
+| # | File | Severity | Checklist ID | Issue |
+|---|------|----------|-------------|-------|
+
+各指摘の詳細（CodeRabbitフォーマット: category + severity + title + explanation + diff）
+
+コードの修正は行わず、検出と報告のみ行うこと。
 ```
 
-**frontend-coderabbit:**
-```
-description: "frontend-coderabbit sub-agent"
-prompt: |
-  あなたはフロントエンドコードレビューのサブエージェントです。
+**Backend (5エージェント):**
 
-  1. スキルファイルを読む: `$HOME/.claude/skills/frontend-coderabbit/SKILL.md`
-  2. `$HOME/.claude/skills/frontend-coderabbit/references/` 配下のファイルを全て読む
-  3. `$HOME/.claude/skills/references/review-format.md` を読む（共通フォーマット）
-  4. プロジェクトの CLAUDE.md を読む
-  5. `git diff --name-only origin/dev...HEAD -- 'frontend/'` で変更ファイルを取得
-  6. 各変更ファイルを読んでレビューを実施（Core Checklist は全項目必須）
-  7. SKILL.md の「Sub-Agent Output Format」に従って結果を返す
+| # | description | checklist | path_filter |
+|---|------------|-----------|-------------|
+| 1 | `backend-review: architecture` | `checklists/architecture.md` | `backend/` |
+| 2 | `backend-review: type-safety` | `checklists/type-safety.md` | `backend/` |
+| 3 | `backend-review: db-performance` | `checklists/db-performance.md` | `backend/` |
+| 4 | `backend-review: test-quality` | `checklists/test-quality.md` | `backend/` |
+| 5 | `backend-review: security-errors` | `checklists/security-errors.md` | `backend/` |
 
-  コードの修正は行わず、検出と報告のみ行うこと。
-```
+**Frontend (5エージェント):**
+
+| # | description | checklist | path_filter |
+|---|------------|-----------|-------------|
+| 1 | `frontend-review: fsd-architecture` | `checklists/fsd-architecture.md` | `frontend/` |
+| 2 | `frontend-review: type-state` | `checklists/type-state.md` | `frontend/` |
+| 3 | `frontend-review: error-vue` | `checklists/error-vue.md` | `frontend/` |
+| 4 | `frontend-review: tanstack-security` | `checklists/tanstack-security.md` | `frontend/` |
+| 5 | `frontend-review: test-quality` | `checklists/test-quality.md` | `frontend/` |
+
+チェックリストのベースパス:
+- Backend: `$HOME/.claude/skills/backend-coderabbit/`
+- Frontend: `$HOME/.claude/skills/frontend-coderabbit/`
 
 #### B-2. 結果の処理
 
-各サブエージェントから返された Findings を集約する:
+全サブエージェントから返された Findings を集約・重複排除する:
 
 ```
-backend-coderabbit:  <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
-frontend-coderabbit: <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
+backend-coderabbit:
+  architecture:      <N>件
+  type-safety:       <N>件
+  db-performance:    <N>件
+  test-quality:      <N>件
+  security-errors:   <N>件
+  合計:              <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
+
+frontend-coderabbit:
+  fsd-architecture:  <N>件
+  type-state:        <N>件
+  error-vue:         <N>件
+  tanstack-security: <N>件
+  test-quality:      <N>件
+  合計:              <N>件（🔴 <n> / 🟠 <n> / 🟡 <n> / 🔵 <n>）
 ```
 
-両方ゼロなら `✅ 指摘なし` として **STEP C へ進む**。
+全カテゴリゼロなら `✅ 指摘なし` として **STEP C へ進む**。
 
 #### B-3. 修正
 
@@ -336,11 +362,21 @@ A-4 と同じコマンドで全テストを実行する。
 
 ```
 === Round <N> Summary ===
-[STEP A] sora-review:           <N>件 / ✅ 指摘なし
-[STEP B] backend-coderabbit:    <N>件 / ✅ 指摘なし  （該当する場合）
-[STEP B] frontend-coderabbit:   <N>件 / ✅ 指摘なし  （該当する場合）
-[STEP C] frontend-architecture: <N>件 / ✅ 指摘なし  （該当する場合）
-[STEP D] codex review:          <N>件 / ✅ 指摘なし
+[STEP A] sora-review:              <N>件 / ✅ 指摘なし
+[STEP B] backend-coderabbit:
+           architecture:           <N>件 / ✅
+           type-safety:            <N>件 / ✅
+           db-performance:         <N>件 / ✅
+           test-quality:           <N>件 / ✅
+           security-errors:        <N>件 / ✅
+[STEP B] frontend-coderabbit:
+           fsd-architecture:       <N>件 / ✅
+           type-state:             <N>件 / ✅
+           error-vue:              <N>件 / ✅
+           tanstack-security:      <N>件 / ✅
+           test-quality:           <N>件 / ✅
+[STEP C] frontend-architecture:    <N>件 / ✅ 指摘なし  （該当する場合）
+[STEP D] codex review:             <N>件 / ✅ 指摘なし
 ```
 
 **全ステップが ✅ 指摘なし → ループ終了（完了レポートへ）**
@@ -356,8 +392,8 @@ A-4 と同じコマンドで全テストを実行する。
 総ラウンド数: <N>
 最終状態:
   [STEP A] sora-review:           ✅ 指摘なし
-  [STEP B] backend-coderabbit:    ✅ 指摘なし  （該当する場合）
-  [STEP B] frontend-coderabbit:   ✅ 指摘なし  （該当する場合）
+  [STEP B] backend-coderabbit:    ✅ 指摘なし (5/5 categories)
+  [STEP B] frontend-coderabbit:   ✅ 指摘なし (5/5 categories)
   [STEP C] frontend-architecture: ✅ 指摘なし  （該当する場合）
   [STEP D] codex review:          ✅ 指摘なし
 
@@ -378,4 +414,4 @@ rm -f "$SORA_PROMPT"
 - **STEP A → B → C → D の順番を変えない**
 - **1ステップでも指摘があればラウンドを最初から回し直す**
 - **サブエージェントにコード修正をさせない（検出と報告のみ）**
-- **backend + frontend coderabbit を並列起動できるのに直列で実行しない**
+- **STEP B のカテゴリ別サブエージェントを直列で実行しない（必ず並列起動）**

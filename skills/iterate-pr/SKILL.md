@@ -378,19 +378,30 @@ gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies \
 
 ### Agent C: レビュースキルへの観点追加
 
-**プロンプトに含める情報:** PR番号、各修正の「レビュー観点候補」「対象スキル」
+**プロンプトに含める情報:** PR番号、各修正の「レビュー観点候補」「対象スキル」「対象カテゴリ」
 
 ```
 pr-context.md の各修正コメントの「レビュー観点候補」を読み、
-対象スキルファイルに追記:
+対象のチェックリストファイルに追記:
 
-- backend/ の指摘 → ~/claude-dotfiles/skills/backend-coderabbit/SKILL.md
-- frontend/ の指摘 → ~/claude-dotfiles/skills/frontend-coderabbit/SKILL.md
+- backend/ の指摘 → ~/claude-dotfiles/skills/backend-coderabbit/checklists/ 配下の該当カテゴリファイル:
+  - Architecture/Code Organization/Syntax 関連 → checklists/architecture.md
+  - Type Safety/Validation/Error Handling 関連 → checklists/type-safety.md
+  - DB Performance/Migration 関連 → checklists/db-performance.md
+  - Test Quality 関連 → checklists/test-quality.md
+  - Security/Error Messages 関連 → checklists/security-errors.md
+
+- frontend/ の指摘 → ~/claude-dotfiles/skills/frontend-coderabbit/checklists/ 配下の該当カテゴリファイル:
+  - FSD Architecture/Code Organization/Unused Code/Syntax 関連 → checklists/fsd-architecture.md
+  - Type Safety/State Management 関連 → checklists/type-state.md
+  - Error Handling/Vue.js Patterns 関連 → checklists/error-vue.md
+  - TanStack Query/Security 関連 → checklists/tanstack-security.md
+  - Test Quality 関連 → checklists/test-quality.md
 
 フォーマット:
   - **<観点名>** [新観点 from PR#<number>] - <チェック内容>。<理由>。<対策>。
 
-既存セクションに収まらない場合は最も近いセクションの末尾に追記。
+該当カテゴリのExtended Checklistセクションの末尾に追記。
 追記後:
   cd ~/claude-dotfiles && git add skills/ && git commit -m "feat: PR#<number>の指摘からレビュースキルに観点を追加" && git push
 ```
