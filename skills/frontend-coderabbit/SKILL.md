@@ -1,17 +1,16 @@
 ---
 name: frontend-coderabbit
-description: Frontend専用 CodeRabbit-style code review - Vue 3 + TypeScript + FSD (Feature-Sliced Design) + TanStack Queryの観点で体系的・網羅的にレビュー。Djangoバックエンドは対象外。
+description: Frontend専用 CodeRabbit-style code review - Vue 3 + TypeScript + FSD + TanStack Queryの観点で5並列サブエージェントにより体系的・網羅的にレビュー。Djangoバックエンドは対象外。
 ---
 
-# Frontend CodeRabbit Review
+# Frontend CodeRabbit Review（並列オーケストレーター）
 
 Vue 3 + TypeScript + FSD (Feature-Sliced Design)のフロントエンドコードをCodeRabbitスタイルで体系的にレビューする。
+**5つのサブエージェントを並列起動**し、各カテゴリを専門的にチェックする。
 
-**Announce at start:** "I'm using the frontend-coderabbit skill to perform a comprehensive frontend code review."
+**Announce at start:** "I'm using the frontend-coderabbit skill to perform a comprehensive frontend code review with 5 parallel sub-agents."
 
 **Data source:** 394 frontend inline comments from 33 PRs (recent 40 PRs analyzed)
-
-**コード例示:** `references/code-examples.md` を参照
 
 ## Format & Severity
 
@@ -34,195 +33,103 @@ Vue 3 + TypeScript + FSD (Feature-Sliced Design)のフロントエンドコー�
 git diff --name-only origin/dev...HEAD | grep "^frontend/"
 ```
 
-### 2. Core チェック（全PRで必ず実施）
+変更ファイルが0件の場合は報告して終了。
 
-変更ファイルを読んだ後、**Core Checklist** の全項目をチェックする。
-見落としゼロを優先。ファイル数が多い場合でもCore観点は省略しない。
+### 2. 5並列サブエージェント起動
 
-### 3. Extended チェック（変更内容に応じて実施）
+以下の5つの Agent を **同一メッセージで並列起動** する。
 
-変更内容がテスト・クエリ管理・セキュリティ等に関係する場合、
-**Extended Checklist** の対応セクションをチェックする。
+各サブエージェントへの共通プロンプト構造:
+
+```
+あなたはフロントエンドコードレビューのサブエージェントです。以下の手順で実行してください:
+
+1. チェックリストを読む: Read tool で `<checklist path>` を読み込む
+2. コード例示を読む: `$HOME/.claude/skills/frontend-coderabbit/references/code-examples.md`
+3. プロジェクトの CLAUDE.md を読む
+4. 変更ファイルを取得: `git diff --name-only origin/dev...HEAD -- 'frontend/'`
+5. 各変更ファイルを Read tool で読む
+6. チェックリストの全項目をチェックする（省略禁止）
+7. 結果を以下のフォーマットで返す
+
+コードの修正は行わず、検出と報告のみ行うこと。
+
+## 出力フォーマット
+
+| # | File | Severity | Checklist ID | Issue |
+|---|------|----------|-------------|-------|
+| 1 | `path/to/file:line` | 🔴/🟠/🟡/🔵 | チェック項目名 | 簡潔な説明 |
+
+各指摘の詳細（CodeRabbitフォーマット: category + severity + title + explanation + diff）
+```
+
+#### Agent 1: FSD Architecture + Code Organization + Unused Code + Syntax
+
+```
+description: "frontend-review: fsd-architecture"
+checklist: $HOME/.claude/skills/frontend-coderabbit/checklists/fsd-architecture.md
+```
+
+#### Agent 2: Type Safety + State Management
+
+```
+description: "frontend-review: type-state"
+checklist: $HOME/.claude/skills/frontend-coderabbit/checklists/type-state.md
+```
+
+#### Agent 3: Error Handling + Vue.js Patterns
+
+```
+description: "frontend-review: error-vue"
+checklist: $HOME/.claude/skills/frontend-coderabbit/checklists/error-vue.md
+```
+
+#### Agent 4: TanStack Vue Query + Security
+
+```
+description: "frontend-review: tanstack-security"
+checklist: $HOME/.claude/skills/frontend-coderabbit/checklists/tanstack-security.md
+```
+
+#### Agent 5: Test Quality
+
+```
+description: "frontend-review: test-quality"
+checklist: $HOME/.claude/skills/frontend-coderabbit/checklists/test-quality.md
+```
+
+### 3. 結果のマージ
+
+全サブエージェントの結果を受け取り、以下を行う:
+
+1. **重複排除** — 同一ファイル・同一行で複数エージェントが指摘した場合、より重要度の高い方を残す
+2. **Severity順ソート** — 🔴 → 🟠 → 🟡 → 🔵
+3. **Summary生成** — `references/review-format.md` の Review Summary Template に従う
 
 ### 4. Generate Summary
 
-`references/review-format.md` の Review Summary Template に従う。
+```markdown
+## Review Summary
 
----
+**Actionable comments posted: <N>**
 
-## Core Checklist（全PRで必ずチェック）`[最頻出・最重要]`
+### Sub-Agent Results
 
-### FSD Architecture `[最多頻出: FSD 21回, import 15回]`
+| Agent | Category | Findings |
+|-------|----------|----------|
+| 1 | FSD Architecture + Code Org | <N>件 |
+| 2 | Type Safety + State Mgmt | <N>件 |
+| 3 | Error Handling + Vue Patterns | <N>件 |
+| 4 | TanStack Query + Security | <N>件 |
+| 5 | Test Quality | <N>件 |
 
-- [ ] **index.ts（公開API）経由のimport必須** — 外部スライスの内部モジュールへの直接importは絶対NG。`@entities/company/api/companyApi` ではなく `@entities/company` 経由（→ `references/code-examples.md`）
-- [ ] **features間の直接import禁止** — features間の直接import（型importも含む）は禁止。共有したい型・ロジックは`entities/`または`shared/`に昇格
-- [ ] **依存方向** — `app → pages → features → entities → shared`（上位→下位のみ）。pages層はfeatures内部（`model/`, `lib/`等）を直接参照禁止
-- [ ] **FSDエイリアス必須** — 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用
+### Severity Distribution
 
-### Type Safety `[型: 40回 - 最多頻出]`
-
-- [ ] **`any`型禁止** — `any`は禁止。`unknown`/`never`/ジェネリクス/型ガードで代替
-- [ ] **`enum`禁止** — TypeScriptの`enum`は禁止。`const + as const + typeof`で代替（→ `references/code-examples.md`）
-- [ ] **型アサーション原則禁止** — `as`キャスト・`!`(non-null assertion)は原則禁止。「必殺技」であり最終手段。`?? デフォルト値`/型ガード/`unknown`+narrowing/ジェネリクスで代替。`as unknown as X`は絶対NG。許容されるのはライブラリが型を提供していない等の回避不能なケースのみ
-- [ ] **`console.*`禁止** — `console.log/warn/error`等は禁止。エラーは4層パイプライン経由
-- [ ] **`<script setup lang="ts">`必須** — `lang="ts"`の省略禁止
-
-### TanStack Vue Query
-
-- [ ] **QueryKey Factoryパターン** — QueryKeyは必ずFactoryパターンで定義。マスターデータは`['master', ...]` prefix必須（→ `references/code-examples.md`）
-- [ ] **Pinia非推奨** — サーバー状態をPiniaとTanStack Queryの両方で管理しない。サーバー状態はTanStack Queryに集約
-
-### State Management
-
-- [ ] **composable singletonのreadonly保護** — module-levelのrefをそのまま公開しない。`readonly()`でラップして外部から直接書き込まれないようにする（→ `references/code-examples.md`）
-
-### Error Handling `[エラー: 25回]`
-
-- [ ] **エラーメッセージ直書き禁止** — 文字列リテラルで直書きせず、カタログ定数経由（→ `references/code-examples.md`）
-
-### Vue.js Patterns
-
-- [ ] **`v-for`の`:key`安定性** — `:key`にarray indexを使用していないか。`id`等の安定した識別子を使用（→ `references/code-examples.md`）
-- [ ] **Floating Promises** — `async`関数を`await`も`void`もなしに呼び出していないか。意図的なfire-and-forgetは`void`を明示
-- [ ] **Vue Router push() の戻り値確認** `[新観点 from PR#461]` - router.push() を try/catch だけでハンドリングしていないか確認する。Vue Router 4.5.x では NavigationFailure はrejectではなくresolveで返るため、`result === undefined`（成功）または `isNavigationFailure(result)` による明示的判定が必要。try/catchのみではナビゲーションガードによる阻止を検出できない。
-
-### Unused Code Detection
-
-- [ ] **未使用の関数・composable・コンポーネント・import** — 呼び出されていない定義が残っていないか
-
-### Syntax & Basic Quality
-
-- [ ] **TypeScript構文エラー・型不一致**
-- [ ] **マージコンフリクトマーカー** — `<<<<<<<`が残っていないか
-- [ ] **SFCの構造** — `<template>` → `<script setup lang="ts">` → `<style scoped>`の順
-
----
-
-## Extended Checklist（変更内容に応じてチェック）
-
-### FSD Architecture（詳細）
-
-- **entities間の`@x`パターン** — entities間は`import type`のみ許可。ランタイムimportは禁止
-- **3+スライスから使用される機能の昇格** — 3スライス以上から参照されるコードは上位層に昇格必須
-- **Composables→Repository IFを介さず実装に直結はNG** — ComposablesがhttpClient等に直結すると依存方向違反（→ `references/code-examples.md`）
-- **UseCase/Application層のインフラライブラリ依存禁止** `[新観点 from PR#437]` — `entities/model/` 配下の UseCase に `import axios from "axios"` 等のインフラライブラリが含まれていないか確認する。Axios エラー変換はリポジトリ（Mutation/Infrastructure）層で行い、UseCase はドメインエラー（プロジェクト定義の Error サブクラス）のみを知るべき
-- **Vue SFC からの型エクスポート禁止** `[新観点 from PR#437]` — `.vue` ファイルから `export type` するのは避け、`model/types.ts` 等の純粋な TypeScript ファイルに型を定義する。`index.ts` からは `.vue` ではなく `./model/types` を参照してエクスポートする
-
-### Type Safety（詳細）
-
-- **型アサーション`as`/`!`の残存チェック** — Core観点の原則禁止に加え、テストコードも含めて`as`/`!`が残っていないか確認。テストでは`?? []`/`?? ''`等のフォールバックで代替可能なケースが多い
-- **金額にFloat演算禁止** — 金額に浮動小数点演算を直接使わない。`Amount`型（branded integer）経由
-- **エンティティ型との型ドリフト防止** `[新観点 from PR#472]` — features層でentities層の型フィールドと一致するインライン型定義（例: `{ key: string; label: string }`）がないかチェックする。Pick/Omitで元のエンティティ型を参照すべき。インライン型はエンティティ型の変更に追従できずドリフトの原因になる
-- **新規entity作成時のapi/schema.tsの有無チェック** `[新観点 from PR#526]` — 新規entityを作成する際、`api/schema.ts`にZodスキーマが定義されているか確認する。権限・認証系APIレスポンスを含め、全てのAPIレスポンスにランタイム検証（Zodスキーマ）を設けること。CODING_STANDARDS.mdのスキーマ規約違反になる
-- **内部関数の引数型の広さ** `[新観点 from PR#569]` — 内部関数でも引数型が実際の使用パターンより広くないかチェック。callerが特定のサブタイプのみ渡す関数は `Extract` で型を絞る。
-
-### TanStack Vue Query（詳細）
-
-- **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
-- **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
-- **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
-- **invalidateQueries 後の重複 refetch** `[新観点 from PR#437]` — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
-- **Promise.allSettled + AbortSignal チェック** `[新観点 from PR#437]` — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
-- **フォールバックデータソースのローディング状態反映** `[新観点 from PR#472]` — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
-
-### State Management（詳細）
-
-- **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
-- **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。
-- **module-level singletonのページ遷移時リセット** `[新観点 from PR#510]` — module-level singleton（composable内のmodule-scope ref）の状態がページ遷移時に適切にリセットされるか確認する。onUnmountedでのクリーンアップを忘れないこと。
-- **watcher間のエラークリア一貫性** `[新観点 from PR#528]` — 複数フィールドにwatcherを設定する場合、エラー状態のクリア処理が一貫しているか確認する。片方のwatcherだけ `submitError` をクリアし、もう片方が漏れているケースがないか。
-- **watch の deep オプションのスコープ** `[新観点 from PR#569]` — 複数ソースのwatchで `{ deep: true }` を使う場合、プリミティブrefとオブジェクトrefが混在していないかチェック。混在時はwatcherを分離してdeepの適用範囲を最小化する。
-- **モジュールレベルキャッシュの認証境界ライフサイクル** `[新観点 from PR#523]` — メモリキャッシュ（module-level変数）を導入した際、ログアウト・セッション切れ・401/403エラー等の認証境界で適切にクリアされるかチェックする。キャッシュ追加時に無効化ポイントの洗い出しをセットで行わないと、古い値が残り続けてセキュリティ・機能バグになる。`invalidate`関数をexportし、認証境界で呼び出すこと
-
-### Error Handling（詳細）
-
-- **非対称なdisabled状態** — 同一フローで複数ボタンがある場合、ローディングガードが全ボタンに対称に付いているか（→ `references/code-examples.md`）
-- **try-catch漏れ** — 非同期処理に適切なエラーハンドリングがあるか。エラーがサイレントに握りつぶされていないか
-- **localStorage.getItem/setItemのtry-catch** `[新観点 from PR#510]` — localStorage.getItem/setItemには必ずtry-catchを付ける。同一機能内で一部だけガードされている不整合がないか確認する。
-- **entities/api層のmutationFnでAxiosError正規化** `[新観点 from PR#437]` — `useMutation` の `mutationFn` が try/catch なしで httpClient を直接呼び出すと、AxiosError（"Request failed with status code 500" 等）がそのままページ層に伝播する。全 mutationFn に try/catch を入れ、`isAxiosError(error)` で判定後 `toAppError(error).message` で正規化してから throw すること
-- **repositoryのcatchブロックでAxiosErrorを素通りさせない** `[新観点 from PR#437]` — repository の catch で特定条件（メールエラー等）のみ変換し、残りを `throw error` で素通りさせていないか確認する。`throw error` が残っている場合は AxiosError を `toAppError` で変換してから throw すること
-- **ユーザー向けエラーメッセージ** — エラー時にユーザーへの通知（toast等）が適切に行われているか
-- **entities層のエラー文字列定数化** `[新観点 from PR#480]` — `throw new Error("...")` の生文字列をエラーコード定数経由に変更しているか確認。エラーパイプライン（コード化→意味付け→表示）を迂回してはならない
-- **SSEバッファ残り処理** `[新観点 from PR#486]` — ReadableStreamのdone時にbufferに未処理データが残っていないかチェック。最後のチャンクが改行で終わらない場合にデータ欠落する。
-- **配列の境界外アクセスパターン** `[新観点 from PR#569]` — `array[index]` がundefinedになるケースでサイレントに失敗する実装をチェック。配列要素の存在チェック時に「要素がまだ存在しないケース」も考慮しているか確認する。未存在時はcreate/pushすべきか検討。
-- **try/catch スコープの肥大化** `[新観点 from PR#569]` — 複数の非同期操作が1つのtry/catchに入っていないかチェック。後続操作の失敗が先行操作の失敗として誤報告される。各操作のエラーハンドリングをスコープ分離する。
-
-### Vue.js Patterns（詳細）
-
-- **非同期レースコンディション** — Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスで状態が上書きされないか。requestIdガードパターンで対策（→ `references/code-examples.md`）
-- **setTimeout/setInterval の cleanup 漏れ** `[新観点 from PR#437]` — `setTimeout` を使う composable や SFC で、戻り値（timer ID）を変数に保存し `onBeforeUnmount` でクリアしているか確認する。`let timer: ReturnType<typeof setTimeout> | null = null` → `onBeforeUnmount(() => { if (timer) clearTimeout(timer) })`。再呼び出し前に `clearTimeout` がないと二重発火の原因にもなる
-- **UIガードとビジネスロジックガードの一致** — UIレベルのガード（`isClickable` computed等）だけでなく、イベントハンドラのビジネスロジック層でも同じ制約を担保しているか
-- **暗黙のtruthyチェック** — `if (value)`による暗黙チェックで`null`・`undefined`・空文字が意図通りに処理されるか
-- **非同期propsに依存するローカルstateの整合性** `[新観点 from PR#472]` — propsの非同期データ（API結果等）に依存するローカルstateは、元データ変更時にstaleな値が残らないかwatchで同期する
-- **ルートパラメータの正規表現制約** `[新観点 from PR#480]` — 数値IDルートパラメータに `:id(\\d+)` パターンを使用しているか確認。制約がないと非数値がNaNでコンポーネントに渡る
-- **ローディング要素のアクセシビリティ** `[新観点 from PR#480]` — `v-if` で表示切替されるローディング要素に `role="status"` と `aria-live="polite"` があるか確認。スクリーンリーダー通知に必要
-- **route.queryの数値バリデーション** `[新観点 from PR#486]` — route.query由来の値をNumber()変換する際に、NaN・負数・小数・Infinityが混入しないかチェック。Number.isIntegerと正数チェックを追加する。
-- **composable refへのテンプレート直接代入禁止** `[新観点 from PR#486]` — composableが公開するrefにテンプレートから`.value =`で直接代入していないかチェック。メソッド経由で操作する。
-- **CSS progressive enhancement フォールバック** `[新観点 from PR#496]` - 新しいCSSプロパティ（`word-break: auto-phrase`等）使用時に非対応ブラウザでのレイアウト崩れがないかチェックする。`@supports` クエリや代替プロパティでフォールバックを提供しているか確認する。
-- **ドラッグ操作のviewport境界チェック** `[新観点 from PR#510]` — ドラッグ操作でDOM要素の位置を更新する場合、viewport境界を超えないようクランプ処理があるか確認する。EDGE_MARGINなどの定数を使い、画面外にパネルが出ないよう制約する。
-- **mousedownイベントの左クリック限定** `[新観点 from PR#510]` — mousedownイベントハンドラではe.button === 0（左クリック）のガードを入れる。右クリック・中クリックでのドラッグ開始を防止する。
-- **レスポンシブ時のリサイズUI非表示** `[新観点 from PR#510]` — レスポンシブ対応のmedia queryでサイズを固定する場合、リサイズ関連のUI要素（ハンドル等）も非表示にする。display: noneで操作不能にすること。
-- **v-elseの防御的使用** `[新観点 from PR#528]` — union型の状態分岐で `v-else` を使う場合、将来の状態追加を考慮して `v-else-if` で明示的に条件を指定しているか確認する。`v-else` は未知の状態でもマッチしてしまう。
-- **フォーム送信成功後の再送信防止** `[新観点 from PR#528]` — フォーム送信成功後にUI状態（ボタンdisabled等）を適切に制御し、再送信を防いでいるか確認する。成功メッセージ表示中に再送信可能な状態は意図しない二重処理を招く。
-- **watch内のフォームリセット漏れ** `[新観点 from PR#536]` — watchでルートパラメータやトークン変更を監視する際、エラー状態だけでなくフォーム入力値（特にパスワード等の機密値）もリセットしているか確認する。
-- **aria-disabled vs disabled の使い分け** `[新観点 from PR#555]` — disabled属性はフォーカスを奪うため、aria-describedby等のa11y情報が届かない。理由テキストを伝えたい場合はaria-disabledに切り替えてクリックガードを実装する。
-
-### Test Quality（テストファイルが変更されている場合）
-
-- **MSW使用** — APIモックはMSWを使用しているか。`vi.fn()`の直接モック乱用は避ける
-- **テスト期待値の文字列リテラル禁止** `[新観点 from PR#437]` — `rejects.toThrow('エラーメッセージ')` 等の期待値に文字列リテラルを直書きしていないか。定数（`MESSAGES.VALIDATION.X`等）を参照する。定数側の変更に追従できず、テストの意図も不明確になる
-- **FormDataを使うmutationテスト** — `FormData`を使うMutationのテストでAxiosアダプターをNode.js httpに設定しているか（`axios.defaults.adapter = 'http'`）（→ `references/code-examples.md`）
-- **型安全なモック** — モック関数に適切な型が付いているか
-- **テストケースの網羅性** — ローディング・エラー・成功状態のそれぞれをカバーしているか
-- **テストデータの独立性** — テスト間で共有される可変なオブジェクトがないか
-- **モックハンドラのAPIバリデーション再現** `[新観点 from PR#472]` — MSWモックハンドラがAPIの必須パラメータ組み合わせバリデーションを正しく再現しているか確認する。片方のみ指定時のエラーレスポンス等
-- **Playwright ルートのクエリパラメータ対応** `[新観点 from PR#480]` — APIリクエストにクエリパラメータが付く場合（例: `?page=1&page_size=50`）、glob パターン `'**/api/endpoint/'` はマッチしない。`page.route()` のパターンは正規表現 `/\/api\/endpoint\//` を使うこと。ページネーションパラメータ追加後は既存テストの route パターンを見直す
-- **E2E/VRTテストのセレクタ安定性とモックレスポンス整合性** `[新観点 from PR#480]` — CSS クラスセレクタはスタイル変更で壊れやすい。コンポーネントに `data-testid` を追加し `page.getByTestId()` を使うこと。また MSW/Playwright モックのレスポンス形式はAPIの実際のレスポンス形式（ページネーションフィールド `count`/`page`/`page_size` 等）と一致させること
-- **ソートテストの non-null assertion** `[新観点 from PR#480]` - ループ範囲が保証されているソート検証テストで `data?.[i+1].createdAt.getTime() ?? 0` のパターンは false positive のリスク。`expect(data!.length).toBeGreaterThanOrEqual(2)` を追加し `data![i]`/`data![i+1]` の non-null assertion を使う。
-- **テストモック正規表現の厳密化** `[新観点 from PR#480]` — Playwrightの `page.route()` やMSWの正規表現パターンに `$` アンカーを付けているか確認。広すぎるパターンは将来エンドポイント追加時に衝突する
-- **実装追加時のテストケース同期** `[新観点 from PR#555]` — 既存の判定関数やユーティリティに新しいケース（例: concatColumns）を追加した場合、対応するテストファイルにもケースが追加されているか確認する。実装とテストの不一致は見落としやすい。
-- **テストファイルのFSDインポートルール** `[新観点 from PR#569]` — テストファイルでも内部パス直接importではなくバレルエクスポート経由でimportしているかチェック。FSDの「内部直接import禁止」ルールはテストにも適用される。
-- **timeout スコープの最小化** `[新観点 from PR#569]` — `describe` 全体に `{ timeout: N }` を設定していないか確認。遅いテストケースが1つだけなら、そのテストの `it` ブロックにのみ `{ timeout: N }` を設定する。describe全体への設定は他のテストの潜在的なタイムアウト問題を隠蔽する。
-
-### Security（セキュリティ）
-
-- **XSS対策** — `v-html`の使用時にサニタイズされているか。ユーザー入力を直接DOMに渡していないか
-- **依存ライブラリの脆弱性** — 既知の脆弱性を持つライブラリ（例: `xlsx`）を使用していないか
-- **機密情報のログ出力** — `console.*`等でAPIキー・トークン・パスワードを出力していないか
-- **列挙攻撃対策とUI文言の整合性** `[新観点 from PR#536]` — バックエンドが列挙攻撃対策で常にsuccessを返す場合、フロントエンドの文言が「送信しました」と断定していないか確認する。「該当するアカウントが存在する場合」等の条件付き表現を使用する
-- **パスワード強度表示とバリデーションの乖離** `[新観点 from PR#536]` — パスワード強度のスコア計算にボーナスポイントがある場合、必須要件（isValid）を満たさないのに「強い」と表示されないか確認する。強度表示ロジックでisValidを考慮する
-- **クロスオリジン環境でのCookie読み取り安全性** `[新観点 from PR#523]` — `document.cookie`は現在のoriginのCookieのみ返すため、APIが別originの場合にそのCookie値をCSRFトークンとして信頼してはいけない。Cookie読み取りにはAPI originと`window.location.origin`の一致チェックをセットで実装すること
-- **権限判定のデータソース一貫性チェック** `[新観点 from PR#526]` — 権限判定で使用するregionIdが表示対象エンティティの所属地域と一致しているか確認する。selectedRegion等のグローバル状態に依存していると、ユーザーが地域を切り替えた際に表示中エンティティとは無関係な権限判定になる。エンティティ自身が持つregionIdを使用すること
-
-### Code Organization & DRY（詳細）
-
-- **DRY原則** — 同一・類似のロジックが複数コンポーネント/composableに存在しないか
-- **コンポーネント分割** — 1コンポーネントが複数の責務を持ちすぎていないか
-- **マジックストリング** — 複数ファイルで使われる文字列リテラルを共有定数化しているか（→ `references/code-examples.md`）
-- **ゲッター関数の二重呼び出し** — `computed`内でゲッター関数を複数回呼び出していないか（→ `references/code-examples.md`）
-- **computed内クロージャ生成** — `computed`スコープ内で関数オブジェクトを定義すると再評価のたびに再生成される。composable本体スコープに抽出（→ `references/code-examples.md`）
-- **状態リセットの対称性** — ファイル削除・変更・差替等の全パスで関連状態が適切にリセットされているか
-- **イベントハンドラの不要な再代入** — 高頻度イベントハンドラで状態が変化しない場合も毎回代入が走っていないか
-- **`@pages/`エイリアスの使用** — pages層内では`@pages/`エイリアスを使用（相対パスは規約違反）
-- **APIエンドポイント定数化** `[新観点 from PR#486]` — fetch/axiosのURL文字列が直書きされていないかチェック。定数として抽出してDRY原則を維持する。
-- **バリデーション正規表現の重複** `[新観点 from PR#528]` — バリデーションロジックの正規表現や条件を複数箇所（ユーティリティとコンポーネント等）で重複定義していないか確認する。共通の定数・関数にまとめてシングルソースオブトゥルースを維持する。
-- **バリデーション関数のパラメータ網羅性** `[新観点 from PR#555]` — バリデーション関数が全入力パラメータ（特にインデックス系）の範囲チェックを実施しているか確認する。ヘッダー名の検証はするがインデックスの範囲チェックを忘れがち。入力値ごとにバリデーションの有無を対応表で確認する。
-- **boolean XOR パターンの可読性** `[新観点 from PR#555]` — `a === b` で両方true/両方falseを除外するXORパターンは一見分かりにくい。排他入力チェック等で使用する場合はインラインコメントで意図を説明する。
-- **条件分岐の等価性** `[新観点 from PR#569]` — ネストした条件分岐が単一条件と等価でないかチェック。複数のif文で同じ変数を分岐している場合、真理値表で等価性を確認する。
-- **dialog アクセシブル名の確認** `[新観点 from PR#497]` — `role="dialog"` または `role="alertdialog"` の要素が `aria-labelledby` か `aria-label` のいずれかを持つことを確認。両方 `undefined` の場合はスクリーンリーダーが認識できない。共通コンポーネントのデフォルト値設定が必要か確認する。
-- **Vue Transition + watch(flush:"post") でのフォーカスタイミング** `[新観点 from PR#497]` — Transition アニメーション中の watch コールバックでフォーカスを設定する場合、`nextTick + requestAnimationFrame` でラップしてレイアウト完了後に実行することを確認する。
-- **モーダル/ダイアログのフォーカスフォールバック** `[新観点 from PR#497]` — フォーカス可能要素が存在しない場合（hideCloseButton=true + slot 内に focusable 要素なし）でもモーダルにフォーカスが当たるよう、コンテナに `tabindex="-1"` を付与してフォールバックフォーカスが設定されているか確認する。
-- **watch の初期値対応（immediate または onMounted）** `[新観点 from PR#497]` — `watch(modelValue)` はデフォルトで変化時のみ動作するため、マウント時に既に `true` の場合はコールバックが実行されない。初期状態を考慮するなら `immediate: true` か `onMounted` でのフォールバック処理が必要か確認する。
-- **フォーム入力watch漏れ** `[新観点 from PR#555]` - 新しい入力フィールドを追加したら、ruleFormErrorクリア用watchにも追加されているか確認する。watchの監視対象リストは全フォーム入力refを含む必要がある。
-- **aria-disabled疑似クラス** `[新観点 from PR#555]` - aria-disabledに変更した場合、:hover/:focus等の疑似クラスが引き続き有効なため、無効状態のスタイルが正しく適用されるか確認する。`:not([aria-disabled='true']):hover`パターンを使用。
-- **バックエンド正規化の一貫性** `[新観点 from PR#555]` - バックエンドで正規化するフィールド（trim等）はフロントエンドのビルダーでも同じ正規化を適用し、保存前後の一貫性を確保する。
-- **テストバリエーション網羅** `[新観点 from PR#555]` - 新機能で複数バリエーション（digits/keyword等）がある場合、片方のみ深いテストで他方が浅いままだと回帰リスクがある。全バリエーションに同等のテストカバレッジを確保する。
-- **短い行のパディング漏れ** `[新観点 from PR#560]` — 追加列を生成するルール（duplicateColumn, arithmeticColumns, arithmeticWithConstant等）で `sourceIndex >= row.length` の短い行を処理する際、行をそのまま返すと `maxColumnCount` との列数不整合が発生する。`maxColumnCount` まで null パディングしてから結果列を追加しているか確認する。
-- **isSafeInteger チェックの除算後誤判定** `[新観点 from PR#560]` — 連鎖演算（divide→add等）で除算後の合法な小数結果に対して `Number.isSafeInteger` チェックが false を返し null になるバグ。オーバーフロー判定は `previousAccumulator` と `nextValue` がともに safe integer の場合のみに限定すべき。
-- **成功パスのエラー状態クリア漏れ** `[新観点 from PR#560]` — プレビュー生成等で失敗時に `ruleFormError.value` を設定する場合、成功パスでも明示的に `null` にクリアしないとエラーメッセージが残り続ける。全分岐で状態遷移の対称性を確認する。
-- **バックエンド上限のフロントエンド実行時ガード** `[新観点 from PR#560]` — バックエンドに配列長上限（例: `_MAX_LIST_LENGTH = 100`）がある場合、フロントエンドの実行時バリデーションでも同じ上限を検証する。`canExecuteRule` だけに依存せず、`handleExecuteRule` でも二重チェックする。
-- **early return前の高コスト操作検出** `[新観点 from PR#569]` — early returnガードの前にdeep clone・大量データコピーなどの高コスト操作が配置されていないかチェック。バリデーション失敗時に無駄なメモリ確保が発生する。バリデーション通過後に移動する。
-- **ガード条件不一致による不要リアクティブ更新** `[新観点 from PR#569]` — 配列要素の存在チェック後、チェック結果に関わらずリアクティブ変数へ代入するパターンを検出。早期リターンで不要な更新を回避する。
+- 🔴 Critical: <N>
+- 🟠 Major: <N>
+- 🟡 Minor: <N>
+- 🔵 Trivial: <N>
+```
 
 ---
 
@@ -230,7 +137,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 
 - 重要度インジケーターを省略
 - actionableな修正案なしにフィードバック
-- Core Checklistの項目をスキップ
+- チェックリストの項目をスキップ
 - FSD index.ts直接importを見逃す
 - features間の直接importを見逃す
 - `any`/`enum`/`console.*`/`as`/`!`の使用を見逃す
@@ -238,12 +145,13 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - `v-for`のindex keyを見逃す
 - Floating Promiseを見逃す
 - コードdiffなしに修正案を提示
+- **サブエージェントを直列で実行する（必ず並列起動）**
 
 ---
 
 ## Sub-Agent Output Format
 
-サブエージェントとして実行された場合、以下の構造で結果を返す。
+サブエージェントとして実行された場合も、内部で5並列サブエージェントを起動し、結果をマージして以下の構造で返す。
 
 ### 出力構造
 

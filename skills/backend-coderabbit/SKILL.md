@@ -1,17 +1,16 @@
 ---
 name: backend-coderabbit
-description: Backend専用 CodeRabbit-style code review - Django/DDD/Clean Architectureの観点で体系的・網羅的にレビュー。FSDフロントエンドは対象外。
+description: Backend専用 CodeRabbit-style code review - Django/DDD/Clean Architectureの観点で5並列サブエージェントにより体系的・網羅的にレビュー。FSDフロントエンドは対象外。
 ---
 
-# Backend CodeRabbit Review
+# Backend CodeRabbit Review（並列オーケストレーター）
 
 Django + Clean Architecture/DDDのバックエンドコードをCodeRabbitスタイルで体系的にレビューする。
+**5つのサブエージェントを並列起動**し、各カテゴリを専門的にチェックする。
 
-**Announce at start:** "I'm using the backend-coderabbit skill to perform a comprehensive backend code review."
+**Announce at start:** "I'm using the backend-coderabbit skill to perform a comprehensive backend code review with 5 parallel sub-agents."
 
 **Data source:** 431 backend inline comments from 33 PRs (recent 40 PRs analyzed)
-
-**コード例示:** `references/code-examples.md` を参照
 
 ## Format & Severity
 
@@ -34,213 +33,103 @@ Django + Clean Architecture/DDDのバックエンドコードをCodeRabbitスタ
 git diff --name-only origin/dev...HEAD | grep "^backend/"
 ```
 
-### 2. Core チェック（全PRで必ず実施）
+変更ファイルが0件の場合は報告して終了。
 
-変更ファイルを読んだ後、**Core Checklist** の全項目をチェックする。
-見落としゼロを優先。ファイル数が多い場合でもCore観点は省略しない。
+### 2. 5並列サブエージェント起動
 
-### 3. Extended チェック（変更内容に応じて実施）
+以下の5つの Agent を **同一メッセージで並列起動** する。
 
-変更内容がマイグレーション・テスト・バリデーション等に関係する場合、
-**Extended Checklist** の対応セクションをチェックする。
+各サブエージェントへの共通プロンプト構造:
+
+```
+あなたはバックエンドコードレビューのサブエージェントです。以下の手順で実行してください:
+
+1. チェックリストを読む: Read tool で `<checklist path>` を読み込む
+2. コード例示を読む: `$HOME/.claude/skills/backend-coderabbit/references/code-examples.md`
+3. プロジェクトの CLAUDE.md を読む
+4. 変更ファイルを取得: `git diff --name-only origin/dev...HEAD -- 'backend/'`
+5. 各変更ファイルを Read tool で読む
+6. チェックリストの全項目をチェックする（省略禁止）
+7. 結果を以下のフォーマットで返す
+
+コードの修正は行わず、検出と報告のみ行うこと。
+
+## 出力フォーマット
+
+| # | File | Severity | Checklist ID | Issue |
+|---|------|----------|-------------|-------|
+| 1 | `path/to/file:line` | 🔴/🟠/🟡/🔵 | チェック項目名 | 簡潔な説明 |
+
+各指摘の詳細（CodeRabbitフォーマット: category + severity + title + explanation + diff）
+```
+
+#### Agent 1: Architecture + Code Organization + Syntax
+
+```
+description: "backend-review: architecture"
+checklist: $HOME/.claude/skills/backend-coderabbit/checklists/architecture.md
+```
+
+#### Agent 2: Type Safety + Validation & Error Handling
+
+```
+description: "backend-review: type-safety"
+checklist: $HOME/.claude/skills/backend-coderabbit/checklists/type-safety.md
+```
+
+#### Agent 3: Database Performance + Migration
+
+```
+description: "backend-review: db-performance"
+checklist: $HOME/.claude/skills/backend-coderabbit/checklists/db-performance.md
+```
+
+#### Agent 4: Test Quality
+
+```
+description: "backend-review: test-quality"
+checklist: $HOME/.claude/skills/backend-coderabbit/checklists/test-quality.md
+```
+
+#### Agent 5: Security & Authorization + Error Messages & Constants
+
+```
+description: "backend-review: security-errors"
+checklist: $HOME/.claude/skills/backend-coderabbit/checklists/security-errors.md
+```
+
+### 3. 結果のマージ
+
+全サブエージェントの結果を受け取り、以下を行う:
+
+1. **重複排除** — 同一ファイル・同一行で複数エージェントが指摘した場合、より重要度の高い方を残す
+2. **Severity順ソート** — 🔴 → 🟠 → 🟡 → 🔵
+3. **Summary生成** — `references/review-format.md` の Review Summary Template に従う
 
 ### 4. Generate Summary
 
-`references/review-format.md` の Review Summary Template に従う。
+```markdown
+## Review Summary
 
----
+**Actionable comments posted: <N>**
 
-## Core Checklist（全PRで必ずチェック）`[最頻出・最重要]`
+### Sub-Agent Results
 
-### Architecture
+| Agent | Category | Findings |
+|-------|----------|----------|
+| 1 | Architecture + Code Org | <N>件 |
+| 2 | Type Safety + Validation | <N>件 |
+| 3 | DB Performance + Migration | <N>件 |
+| 4 | Test Quality | <N>件 |
+| 5 | Security + Error Messages | <N>件 |
 
-- [ ] **Feature間直接依存** — 通常Feature間の直接import（例: journal→accounting）がないか。`shared/types/`経由が必要。全Feature→shared/・user/・organization/ は許可
-- [ ] **Domain層の純粋性** — Domain層（entities, repositories, enums）がDjango/DRFに依存していないか（`QuerySet`・`Model`・インフラ概念の混入禁止）
-- [ ] **Application層のORM非依存** `[新観点 from PR#537]` — Application層のサービス・ユースケースがORM Model（`from app.models import ...`）を直接importしていないか確認する。依存方向「Application → Domain ← Infrastructure」に従い、ORM操作はInfrastructure層のRepository実装に配置し、Application層はDomainインターフェースのみに依存させる
-- [ ] **DomainRepositoryがDTOに依存するのはNG** — `AuthUserPayload`等のPresentation/Application DTOをDomain層のRepositoryが返していないか。ドメインモデル/VOを返しUseCase側でDTO変換すること（→ `references/code-examples.md`）
-- [ ] **Transaction管理の配置** — `transaction.atomic()`がUseCase層でのみ管理されているか。Repository層でのトランザクション禁止
-- [ ] **Result型とtransaction.atomicの組み合わせ** `[新観点 from PR#510]` — Result型パターンでtransaction.atomic()を使う場合、エラーチェックがatomicブロック内にあるか確認する。Result型は例外を投げないため、atomicブロック外でのエラーチェックではロールバックされない。エラー時はRuntimeErrorをraiseしてatomicにrollbackさせる
-- [ ] **transaction.atomic内のset_rollback漏れ** `[新観点 from PR#528]` — `transaction.atomic()` 内で複数の書き込み操作がある場合、最初の書き込み成功後に後続が失敗するケースで `set_rollback(True)` が漏れていないか確認する。漏れるとトークン無効化だけコミットされる等の部分コミットバグが発生する。全 `return failure()` 前に `set_rollback(True)` を追加する
-- [ ] **1 class = 1 file** — 各クラスが独自のファイルに配置されているか
-- [ ] **トランザクション外副作用の並行リスク** `[新観点 from PR#536]` — トランザクション外でメール送信等の副作用を実行する場合、その間に他リクエストが状態を変更し、送信内容が無効になる競合がないか検証する。特にcooldown=0等の設定で競合窓が広がるケースに注意
-- [ ] **Domain層docstringの実装詳細漏洩** `[新観点 from PR#536]` — Domain層の抽象メソッドdocstringに「UPDATE ... WHERE」等のSQL/ORM実装詳細が含まれていないか確認する。振る舞いはドメイン用語で記述し、実装方法はInfra層に委ねる
+### Severity Distribution
 
-### Type Safety
-
-- [ ] **型ヒント必須・Any禁止** — すべての関数・メソッドに型ヒントを付与。`Any`型は禁止 → `Protocol`/`TypedDict`/`Generic`で代替
-- [ ] **Result型タプルアンパック** — `result, error = usecase.execute()`の形式が必須。`.error`属性アクセス禁止
-- [ ] **`_`でエラー無視はNG** — `value, _ = usecase.execute()`でエラーを捨てると認可チェックが消える。必ずエラーを変数に受けてチェック（→ `references/code-examples.md`）
-- [ ] **Enum必須** — ステータス値・カテゴリ値に文字列リテラル禁止。`TextChoices`/`IntegerChoices`を使用
-- [ ] **エラー型判定** `[新観点 from PR#522]` — Result型のエラーを文字列比較で分岐していないか確認する。UseCase層で例外型を分類している場合はisinstanceで型判定すべき。文字列比較はメッセージ定数の変更で分岐が壊れるリスクがある
-- [ ] **bool⊂int型チェック** `[新観点 from PR#469]` — isinstance(x, int)によるバリデーション箇所でboolが通過しないか確認する。Pythonではboolはintのサブクラスのため、isinstance(True, int)がTrueを返す。intチェックの前にisinstance(x, bool)で排除する
-
-### Security & Authorization
-
-- [ ] **permission_classes明示設定** — DRF ViewにPermissionが必ず明示されているか。デフォルト依存禁止（→ `references/code-examples.md`）
-- [ ] **認可バイパス経路** — Result型の誤用やエラーハンドリング不備により認可チェックがスキップされる経路がないか
-- [ ] **write_only on sensitive fields** — パスワード等の機密フィールドに`write_only=True`が設定されているか
-- [ ] **冪等キー実装のTOCTOUチェック** `[新観点 from PR#486]` — cache.get/setの分離パターンは並行リクエストで競合する。冪等制御にはcache.add()等の原子的操作を使い、エラーパスでのロック解放漏れがないか確認
-- [ ] **冪等キーのスコープ** `[新観点 from PR#486]` — 認証必須APIのcache keyにユーザーIDが含まれているか確認する。ユーザーIDなしだと異なるユーザー間で冪等キーが衝突し、正当なリクエストが拒否される
-
-### Error Messages & Constants
-
-- [ ] **エラーメッセージ定数化** — 文字列リテラルでエラーメッセージを直接記述していないか。`app/shared/constants/`で管理（→ `references/code-examples.md`）
-- [ ] **`logger`/`print`禁止** — `logger`・`print`（マイグレーションbackward含む）の使用禁止
-- [ ] **ユーザー向け/内部向けメッセージの混在チェック** `[新観点 from PR#486]` — Msg/InternalMsgの分離が不十分だとAPIレスポンスに内部メッセージが露出するリスクがある。メッセージ定数を追加する際、用途（ユーザー向け/内部向け）を確認して適切なクラスに配置すること
-- [ ] **定数ファイルの責務分離** `[新観点 from PR#486]` — メッセージ定数ファイルに設定値（TTL, 閾値等）を混在させていないか確認する。文言定数と運用設定値は別ファイルに分離すること。混在すると責務が曖昧になり保守性が低下する
-- [ ] **DRFフィールド制約のエラーメッセージ定数化** `[新観点 from PR#520]` — DRFフィールドにmax_length/min_length/min_value/max_value等の制約を追加する際、error_messagesもセットでMsg定数化されているか確認する。DRFビルトインメッセージはプロジェクトの「エラーメッセージ定数化」ルールの対象外と見落としやすい。error_messagesパラメータで明示的に定数を指定すること
-- [ ] **開発者向けエラーメッセージの定数化漏れ** `[新観点 from PR#546]` — RuntimeErrorなど開発者向けエラーもエラーメッセージ定数化ルールの対象。ユーザー向けエラーだけでなく、Repository契約違反等の内部エラーも定数化されているかチェック。
-- [ ] **同一内部契約違反の定数再利用** `[新観点 from PR#546]` — 複数usecaseで同じ契約違反（`Result` が error なしで `None`、Repository が `None` を返す等）を扱う場合、メッセージを raw 文字列で複製せず既存の共通定数を再利用しているか確認する。文言の分岐を防ぎテスト保守性を上げる。
-
-### Database Performance
-
-- [ ] **N+1クエリ** — ループ内でDBクエリを実行していないか。`select_related()`/`prefetch_related()`の適用漏れ
-- [ ] **`SELECT *`禁止** — `select_related(...).get()`は全カラム取得になる。`.only()`/`.values()`で絞り込む（→ `references/code-examples.md`）
-- [ ] **select_related使用時の.only()適用** `[新観点 from PR#472]` — select_relatedやprefetch_relatedで関連テーブルをJOINしている箇所で.only()/.defer()によるカラム制限が付いているかチェックする。SELECT \*禁止ルールはJOIN先テーブルにも適用される。必要フィールドのみ明示的に列挙する
-- [ ] **QuerySetのorder_by明示** `[新観点 from PR#472]` — Django の QuerySet で `.all()` を使用する際、`order_by` を指定しないとDB依存で順序が揺れる。APIレスポンスの安定性・テスト再現性のため、`order_by` は常に明示すべき
-- [ ] **インデックスカバレッジ確認** `[新観点 from PR#537]` — フィルタ条件を変更した場合、対象テーブルの Meta.indexes が新しいクエリパスをカバーしているか確認する。条件変更でインデックスが追随しないとフルスキャンになる。フィルタ条件変更時は EXPLAIN で確認するか、対象テーブルのインデックス定義を目視チェックする
-- [ ] **マイグレーションのAddIndexConcurrently使用** `[新観点 from PR#537]` — 本番稼働中のテーブルにインデックスを追加するマイグレーションで `migrations.AddIndex` を使っていないか確認する。DDLロックで本番停止を招くため、`AddIndexConcurrently` + `atomic = False` を使用する。`from django.contrib.postgres.operations import AddIndexConcurrently` が必要
-
-### Test Quality（テストファイルが変更されている場合）
-
-- [ ] **関数ベーステスト必須** — `class TestXxx:`禁止。すべて`def test_xxx():`のモジュールレベル関数
-- [ ] **テスト名は英語・命名順序** — `test_<動作>_<条件>_<期待結果>`の順序が必須。日本語禁止（→ `references/code-examples.md`）
-- [ ] **正常系カバレッジ** — 異常系テストのみで正常系が抜けていないか
-- [ ] **テストアサーションのフィルタ一致** `[新観点 from PR#537]` — テストのアサーションで使用するフィルタ条件が本番の削除/検索ロジックと同等か確認する。テストデータが1パターンのみだとフィルタ不足でも偽陽性が出ない。テストのフィルタは本番ロジックのキー条件と一致させる
-- [ ] **削除キー要素ごとの分離性テスト** `[新観点 from PR#537]` — 複合キー（company_id, year, month等）による削除ロジックをテストする際、各キー要素の分離性を個別に検証しているか確認する。会社間分離テストだけでは不十分で、同一会社・別年度の同月データが影響を受けないことも検証する
-- [ ] **Result型エラー分岐のロールバック検証テスト** `[新観点 from PR#537]` — transaction.atomic内でResult型（failure返却）を使う複数ステップ処理で、途中ステップ失敗時にset_rollback(True)で先行ステップの変更がロールバックされることを結合テストで検証しているか確認する。成功系テストだけでは部分コミットバグを検出できない。monkeypatchで中間ステップをfailureに差し替え、全テーブルが元のまま残ることをアサートする
-- [ ] **異常系テストのエラー種別検証** `[新観点 from PR#546]` — 異常系テストで「エラーが返ること」だけでなく「正しいエラー種別が返ること」まで検証しているか。error_response is not Noneのみでは分岐の取り違えを検出できない
-- [ ] **ページネーション境界値の片側超過テスト** `[新観点 from PR#546]` — pagination helper / validator に上限チェックがある場合、ちょうど境界だけでなく「1件超過」の失敗系テストがあるか確認する。`>` と `>=` の取り違えを検出する。
-- [ ] **Presentation parser の非数値入力テスト** `[新観点 from PR#546]` — `int()` 変換を行う query/body parser に対し、ゼロや負数だけでなく `"abc"` 等の非数値入力で `ValueError` 分岐を通すテストがあるか確認する。
-- [ ] **成功系 parser テストのデフォルト値固定** `[新観点 from PR#546]` — parser の成功系テストで主要変換だけでなく、同時に返るデフォルト値（page/page_size等）も固定しているか確認する。暗黙のデフォルト変更を検出するため。
-
-### Syntax & Basic Quality
-
-- [ ] **構文エラー** — importの括弧閉じ忘れ、未解決のマージコンフリクトマーカー（`<<<<<<<`）
-- [ ] **命名規約** — CLAUDE.md準拠（`{action}_{entity}_usecase.py`, `{Entity}RepositoryImpl`等）
-- [ ] **未使用コード** — 未使用の関数・import・型定義・定数がないか
-- [ ] **ドキュメント内ファイルパス参照の正確性** `[新観点 from PR#469]` — リファレンスドキュメント内のファイルパスが実際のファイル名と一致しているか確認する。特にファイル名の単数/複数形の不一致に注意
-
----
-
-## Extended Checklist（変更内容に応じてチェック）
-
-### Architecture（詳細）
-
-- **Presentation→Infrastructure直接依存** — ViewやSerializerがRepositoryImplを直接参照していないか。UseCase経由が必要
-- **フィルタ除外と永続化の不一致** `[新観点 from PR#546]` — 「フィルタ除外」と「状態遷移の永続化」が一致しているか。exclude_expired_pendingのようなフィルタは表示上の除外であり、データの整合性を保証しない。一覧系APIで期限切れを永続化する設計判断が必要
-- **終端状態の関連エンティティ削除後の一覧取得耐性** `[新観点 from PR#546]` — 終端状態（APPROVED等）の申請が参照する関連エンティティ（会社・ユーザー）が削除される可能性を考慮しているか。特に削除ジョブが存在するフローでは、一覧取得時に欠損を許容する設計が必要。
-
-### Type Safety（詳細）
-
-- **ドメインエンティティのEnum型引数の実行時型検証** — `create()`等のファクトリメソッドでEnum型パラメータを受け取る場合、`isinstance(x, SomeEnum)` の実行時チェックがあるか。型ヒントだけでは実行時に文字列が通り抜ける
-- **Serializer/Domainモデルフィールド不一致** — APIレスポンスのフィールド名がDomainエンティティと整合しているか
-- **QuerySet 戻り値型の明示** `[新観点 from PR#480]` - `# type: ignore[return]` で型チェックを回避していないか確認。CLAUDE.md「型ヒント必須」に従い `QuerySet[Model]` の戻り値型を明示すること。
-- **Serializer SerializerMethodField の戻り値型精度** `[新観点 from PR#480]` - `SerializerMethodField` のメソッドで `Optional[str]` を返しているが、渡すフィールドが non-Optional な場合は `str` に絞れる。エンティティのフィールド定義と照合して型精度を上げること。
-- **EventStream型定義の網羅性** `[新観点 from PR#486]` — AWS Bedrock等の外部サービスのストリームイベント型が、チャンクだけでなく例外イベント型も含んでいるかチェック。TypeDictのtotal=Falseの適切な使用。
-- **DTO型とUseCase分岐の一致性** `[新観点 from PR#570]` — UseCaseで条件分岐する場合、DTOの型がその分岐を反映しているかチェック。Optionalで済ませずUnion型で意図を明示する
-
-### Security（詳細）
-
-- **トークン無効化** — パスワード変更・ログアウト時にトークンが適切に無効化されているか
-
-### Validation & Error Handling（詳細）
-
-- **バリデーション実行順序** — 削除・更新処理の前にバリデーションが実行されているか。副作用の後にチェックをしていないか
-- **正規化後の再バリデーション** — 入力値を正規化・変換した後に結果が有効か再検証しているか
-- **validate\_\<field\>サニタイズ後の空文字チェック** `[新観点 from PR#520]` — validate*\<field\>メソッドで制御文字除去・trim等のサニタイズを行う場合、サニタイズ後の値が空文字になるケースを考慮しているか確認する。DRFのallow_blank/requiredチェックはvalidate*\<field\>より先に実行されるため、サニタイズ後の空文字はDRFでは検出できない。明示的な空文字チェックとValidationErrorの発生が必要
-- **年の範囲チェック** — `year <= 0`のみで1900-9999の範囲チェックが漏れていないか（→ `references/code-examples.md`）
-- **frozen dataclassの`__post_init__`バリデーション** — 不正な値でインスタンスが作られないよう、`item_name`の非空・`year`の範囲等を`__post_init__`内で`ValidationError`を使って検証（→ `references/code-examples.md`）
-- **frozen dataclass不変条件の網羅性** `[新観点 from PR#469]` — **post_init**で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
-- **エンティティ不変条件の空白チェック** `[新観点 from PR#480]` — ドメインエンティティの `__post_init__` で `not self.field` ではなく `not self.field.strip()` を使っているか確認。空白のみ入力を通過させるバグを防ぐ。エラーメッセージが定数化されているかも併せて確認
-- **`from_string()`/enum変換の入力型チェック** — `isinstance(value, str)` チェックがないと`int`や`None`で`AttributeError`になる（→ `references/code-examples.md`）
-- **`reconstruct()`でのUUID型不変条件の未検証** — `isinstance(field, UUID)` チェックがないとDB破損データがDomainに混入する
-- **`reconstruct()` 内 Enum 変換の例外保護** `[新観点 from PR#480]` — `SomeEnum(value)` 形式の Enum 変換は不正な値で `ValueError` を送出する。`reconstruct()` 内で変換する場合は `try/except ValueError` で保護し、エラーを明示的に再送出すること。Repository の `except DatabaseError` では `ValueError` は捕捉されないため Result 契約が崩れる
-- **Repository の except 節での ValueError 捕捉** `[新観点 from PR#480]` — `except DatabaseError as exc: return failure(exc)` は mapper 由来の `ValueError` を捕捉しない。mapper（`model_to_entity` 等）が送出する例外も Result に包むため `except (DatabaseError, ValueError) as exc:` にすること
-- **例外チェーンの `from exc`** `[新観点 from PR#480]` — `except ValueError as exc: raise ... from exc` パターンを使用しているか確認。`from exc` がないとトレースバック情報が失われデバッグ困難になる
-- **エラーメッセージと正規表現の整合性** — エラーメッセージに記載した許容値範囲が実際の`RegexValidator`パターンと一致しているか
-- **月文字列のint変換による形式ロス** `[新観点 from PR#469]` — MM形式の月文字列をint()変換して再ゼロパディングするパターンを検出する。「1」→1→「01」の暗黙正規化で入力バリデーションが無効化される。月操作はstr→str変換で行うべき
-- **UseCase層の引数整合性ガード** `[新観点 from PR#472]` — 引数間の依存関係がある場合（例: category_typeとsub_category_id/large_item_id）、UseCase層でも防御的に検証しているかチェックする。Presentation層でバリデーションしていてもUseCase層は独立したインターフェースとして整合性を保証すべき。引数の組み合わせ制約はUseCase.execute()の冒頭でガードする
-- **UseCaseの値域検証** `[新観点 from PR#476]` - UseCaseでIDパラメータの`None`チェックに加えて値域（`<= 0`など）の検証も行っているか。View層で検証されていてもUseCaseは独立したビジネスロジック単位として自己完結すべきなため、直接呼び出し経路でも不正入力を拒否できるよう値域検証を追加すること。
-- **Presentation層のエラーメッセージ定数化** `[新観点 from PR#476]` - ヘルパー関数内の`raise ValueError(f"...")`等のインラインエラーメッセージが定数化されているか。CLAUDE.mdルール「エラーメッセージ定数化」に従い、`SummaryErrors`等の定数クラス経由にすること。またPresentationヘルパーで発生する例外はView層でキャッチして`ApiResponse.error`に変換すること。
-- **assert文の本番使用禁止** `[新観点 from PR#486]` — python -Oで無効化されるassertをバリデーションに使っていないかチェック。明示的なif文+エラーレスポンスに置き換える。
-- **SSEジェネレータの例外捕捉範囲チェック** `[新観点 from PR#486]` — ストリーミングレスポンスのジェネレータでは、特定例外のみ捕捉すると他の例外でストリームが無言で途切れる。GeneratorExit以外を包括的に捕捉し、クライアントにエラーイベントを送信すること
-- **エラー種別の識別精度** `[新観点 from PR#486]` — isinstanceだけでなく、エラーメッセージやカスタム例外で具体的なエラー種別を判別しているか確認する。一律マッピングは原因隠蔽を招き、ユーザーに不適切なエラーメッセージが返される
-- **キャッシュロック解放漏れ** `[新観点 from PR#486]` — キャッシュロック取得後〜ストリーム開始前の同期コードで例外が発生した場合のロック解放を確認する。try/exceptで保護しないとロックが残存し、TTL期限までリクエストがブロックされる
-- **入力IDの早期バリデーション** `[新観点 from PR#522]` — View で外部入力（session_id 等のID参照）を受け取る場合、DB参照・ペイロード構築等の重い処理の前に軽量なバリデーション（存在確認・権限確認）を先行させているかをチェックする。無効な入力で重い処理が走るとリソースの無駄になる
-- **不要な例外catchの検出** `[新観点 from PR#546]` — try-except句で実際にraiseされない例外型をcatchしていないか。fail_with_rollbackでResult型として返される例外はexcept句に不要。catchする例外は実際の発生源と照合して必要最小限に
-- **例外変換時のメッセージ保持** `[新観点 from PR#546]` — 例外変換時に元のエラーメッセージを破棄していないか。デバッグ時の原因特定のため、元例外のメッセージはできる限り保持する
-- **リトライ間隔パラメータの最小値バリデーション** `[新観点 from PR#546]` — リトライ間隔パラメータの最小値バリデーション。0を許可すると即時リトライによる無限ループやリソース飢餓が発生する可能性がある。リトライ系パラメータは最低1秒以上を強制。
-- **同一usecase内の複数分岐のエラーハンドリング統一** `[新観点 from PR#546]` — 同一usecase内の複数分岐で同じドメインメソッドを呼ぶ場合、全分岐でエラーハンドリングが統一されているかチェック。一方の分岐だけtry-exceptがない場合、Result契約を破る。
-- **同一エラーコードの例外型統一** `[新観点 from PR#546]` — 同じエラーコード（例: `NOT_APPLICANT`）を複数usecaseで返す場合、例外型まで統一されているか確認する。`ValidationError` と `PermissionDeniedError` の混在は API の HTTP ステータス差異を生み、呼び出し側を不安定にする。
-- **DRFの内部APIアクセス検出** `[新観点 from PR#570]` — DRFの `_declared_fields` や `_meta` 等のアンダースコア接頭辞属性を直接操作していないかチェック。バージョンアップで互換性が壊れるリスクがある。継承 + `get_fields()` オーバーライドで代替する
-- **条件付き必須フィールドの検出** `[新観点 from PR#570]` — あるフィールドの値によって他フィールドの必須/不要が変わるケースで、常時requiredにしていないかチェック。`validate()` メソッドで条件分岐する
-
-### Database Performance（詳細）
-
-- **Bulk操作** — 複数レコードの作成・更新時に`bulk_create()`/`bulk_update()`を使用しているか
-- **Admin list_displayでのN+1** — `list_display`に集計表示がある場合、`get_queryset()`で`annotate(Count(...))`しているか
-- **ページネーションの副キー** `[新観点 from PR#480]` — `order_by` が単一カラムの場合、同値タイブレーカー不在で重複・取りこぼしが起きる。PKを副キーに追加して安定ソートにする
-- **management commandでのDB側フィルタリング** `[新観点 from PR#510]` — management commandでも大量データの可能性を考慮し、DB側フィルタリング（Exists subquery等）を優先する。Python側でset差分を取る前に、SQLレベルで絞り込めないか検討する。iterator(chunk_size)で逐次取得してメモリ圧迫を回避する
-- **management commandの外部参照事前検証** `[新観点 from PR#526]` — CSV等の外部データからDB参照（Role, Permission等）を行う管理コマンドで、参照先の存在をループ内で個別チェック（try/except DoesNotExist + WARNING）していないか確認する。部分適用で不完全な状態がコミットされるため、ループ前に一括取得＋欠落チェック→CommandErrorでfail-fastすべき
-
-### Test Quality（詳細）
-
-- **`@pytest.fixture`の活用** — `setup_method`ではなく`@pytest.fixture`を使って共通フィクスチャを切り出す。4箇所以上の重複はDRY違反
-- **CSRFテスト有効化** — `csrf_protect`を使うViewのテストは`APIClient(enforce_csrf_checks=True)`で実運用と同条件に（→ `references/code-examples.md`）
-- **テストデータの独立性** — テスト間で共有される可変なdict・listがないか
-- **`interaction`検証テストで`execute()`の戻り値も確認** — `mock.assert_called_once()` だけでなく `result, error = usecase.execute()` でアンパックして `assert error is None` まで検証（→ `references/code-examples.md`）
-- **`count()`のみのアサーションは不十分** — `assert Model.objects.count() == 1` だけでなく、特定行の存在も確認
-- **異常系テストでDB不変性を検証** — 例外発生テストで `assert Model.objects.count() == 0` のようにDB不変性まで検証
-- **セキュリティテストの副作用未検証** `[新観点 from PR#536]` — 拒否系テスト（使用済みトークン、期限切れ等）で「操作が失敗した」だけでなく「副作用が発生していない」（パスワード未変更等）ことも検証する。エラー返却のみのアサーションは退行を見逃す
-- **テストヘルパーの`conftest.py`共通化** — 3箇所以上で同一ヘルパーが重複しているなら`conftest.py`に共通化
-- **リポジトリテストのクエリ数検証一貫性** `[新観点 from PR#469]` — DBアクセスを伴うリポジトリテストでdjango_assert_num_queriesが統一的に使用されているか確認する。空結果テストでも省略しない
-- **ファクトリのデフォルト値とモデル制約の整合性** `[新観点 from PR#472]` — テストファクトリのデフォルト値がモデルの`CheckConstraint`に違反していないか確認する。特にpolymorphic FKパターン（category_type + FK）では、デフォルトの組み合わせが制約条件を満たすこと
-- **バリデーション追加時の失敗系テスト** `[新観点 from PR#472]` — UseCase/Repository層にバリデーションを追加した際、失敗パスのテストも同時に追加しているかチェックする。正常系テストだけではバリデーションの実効性が保証されない。各ガード条件に対応する回帰テストを作成する
-- **Factory traitの活用** `[新観点 from PR#472]` — テストでFactoryのフィールドを直接指定している場合、既存traitで同等の設定ができないかチェックする。trait（例: for_large_item=True）を使うことでFactory定義の変更に自動追従でき、テストの保守性が向上する
-- **テストフィクスチャのCSRF設定** `[新観点 from PR#472]` — 新規テストファイルでAPIClientフィクスチャを独自定義する際、conftest.pyの規約（enforce_csrf_checks=True + CSRFトークン設定）を踏襲しているかチェックする。GETのみのテストでも規約統一のためCSRFを有効化する
-- **DIテスト配線検証** `[新観点 from PR#472]` — DIテストでは型チェック（isinstance）だけでなく依存配線の検証まで含めるべき。同ファイル内の既存DIテストパターンとの一貫性をチェックし、resolve後のインスタンスが正しい依存を持つことまで確認する
-- **APIコントラクトテスト網羅性** `[新観点 from PR#472]` — APIコントラクトテストではレスポンスシリアライザの全フィールドをカバーすべき。新フィールド追加時に既存テストの更新漏れを検出するため、レスポンスbodyのキー一覧とシリアライザのfields定義を突合する
-- **テストヘルパーMUSTルール準拠** `[新観点 from PR#472]` — 新規テスト作成時にCODING_STANDARDS.md 9.3のテストヘルパー利用MUSTルールに準拠しているか確認する。既存のconftest.pyヘルパーやFactoryを使わず独自にセットアップしている箇所を検出する
-- **テストモックの `create_autospec`** `[新観点 from PR#480]` — ABCやProtocolが定義されたリポジトリを `Mock()` でモックしている場合、`create_autospec(Repository, instance=True)` に置換すべき。シグネチャ検証でリファクタ退行を検知
-- **バリデーションテストのエラー値検証** `[新観点 from PR#480]` — `assert error is not None` だけでなく `str(error) == ErrorConstants.XXX` で具体的な値を検証。別エラーへの退行を検知する
-- **統合テストのクエリバジェット統一** `[新観点 from PR#480]` — 一覧エンドポイントにクエリ上限があるなら詳細エンドポイントにも `django_assert_max_num_queries` を設定。N+1退行を検知するため全エンドポイントに統一して適用する
-- **mock の autospec 設定** `[新観点 from PR#496]` - テストで外部ライブラリ（boto3等）をmockする際に `autospec=True` が設定されているかチェックする。autospecにより実際のインターフェースと一致しない呼び出しを早期検出できる。
-- **POST/PUT/DELETEエンドポイントのCSRFテスト** `[新観点 from PR#570]` — 新規POST/PUT/DELETEエンドポイント追加時、未認証テストだけでなくCSRFトークンなし/あり双方のテストがあるかチェック
-- **Falsy値の境界テスト** `[新観点 from PR#570]` — `is not None`で分岐する箇所でfalsy値(0, "")が正しく処理されるかの回帰テスト追加を確認する
-- **既存エンドポイントのCSRFテスト漏れ** `[新観点 from PR#570]` — 新機能追加時に関連する既存テストファイルのCSRFカバレッジも確認する
-
-### Code Organization & DRY（詳細）
-
-- **DRY原則違反** — 同一・類似のヘルパーメソッドやバリデーションロジックが複数箇所に存在
-- **QuerySetフィルタ重複の共通化** `[新観点 from PR#546]` — `exclude_expired_pending` のような同一 QuerySet フィルタが `search` / `count` / `search_approvable_requests` に重複していないか確認する。3箇所以上の完全重複は helper 化して条件のズレを防ぐ。
-- **入力型だけ異なる同一アルゴリズムの重複** `[新観点 from PR#469]` — 入力型が異なるだけでロジックが同一の関数ペアがないか確認する。型変換部分を分離して共通化すべき。2箇所でもメンテリスクがある
-- **メソッド間の同一集計再計算** `[新観点 from PR#469]` — メインメソッドで作成した集計結果(dict等)をサブメソッドに渡さず再計算していないか確認する。O(n)走査の不要な繰り返しを防ぐ
-- **同一Repository呼び出しのprivate メソッド抽出** — `save()`と`find_*()`で同じ`Entity.reconstruct(...)`が重複している場合、`_to_entity(obj)`に抽出
-- **dict comprehensionの重複キー上書きバグ** — `{key: value for ...}`は同一キーで後の値が上書きされる。集計が必要な場合は加算ループに変更（→ `references/code-examples.md`）
-- **サイレントドロップより明示的エラー返却** — list comprehension内のNoneフィルタでデータを捨てるのは危険。存在すべきデータが欠損している場合は`failure(ValueError(...))`を返す（→ `references/code-examples.md`）
-- **Moduleレベルシングルトンとインスタンス変数の重複** — ステートレスなCalculator/Serviceの初期化方法を統一する
-- **Deprecated API使用** — 非推奨のDjango API（例: `CheckConstraint`のclass引数）を使用していないか
-- **コメント正確性** — コメントが実際のコードの挙動と一致しているか
-- **for_updateメソッドのdocstring** `[新観点 from PR#528]` — `select_for_update()` を使用するリポジトリメソッドの docstring にトランザクション内で呼び出す必要がある旨を明記しているか確認する。欠落すると呼び出し側がトランザクション外で使用するリスクがある
-- **カーソルページネーションのソート契約明記** `[新観点 from PR#546]` — cursor を受け付ける repository interface に、結果がどの順序（`-requested_at, -id` 等）で返るかが docstring で明記されているか確認する。実装だけに order_by があっても、Protocol 契約が曖昧だと差し替え時に崩れる。
-- **型アノテーションスタイルの一貫性** — `Union[A, B]`と`A | B`が混在していないか
-- **到達不能コードの検出** `[新観点 from PR#486]` — 防御ガード（`if not x: return`）が上流のバリデーションで到達不能になっていないかチェック。冗長な防御コードはテストカバレッジを下げ保守コストを増やす。
-- **設定値マジックナンバーの定数化** `[新観点 from PR#486]` — TTL・タイムアウト等のビジネス設定値がローカル変数にハードコードされていないかチェック。constants/に定義して一元管理する。
-- **設定変数の上書き検出** `[新観点 from PR#495]` — settings.pyで条件分岐により変数をインポートした後、同じ変数を無条件に再定義していないかチェック。Pythonでは後続の代入が前の代入を上書きするため、条件付きインポート＋無条件ハードコード定義の組み合わせは常にバグとなる。条件付きインポートが存在する場合、後続の定義も対応するelse/notガードで囲むこと。
-- **事前構築データの一貫使用** `[新観点 from PR#522]` — `prepare()` 等で構築したデータを後続処理に渡さず、元の入力を再利用していないかをチェックする。保存用データとストリーム用データの出所が同一であることを確認する。「事前構築 → 使用」の流れで構築結果が一貫して使われていなければ、二重化バグや不整合の原因になる。
-
-### Migration & DB Schema（マイグレーションファイルが変更されている場合）
-
-- **リバースマイグレーション実装** — `reverse_code`がnoopではなく、ロールバック可能な実装か
-- **`RunSQL.noop` reverse後に制約消失** `[新観点 from PR#469]` - `RunSQL`でConstraintをDROPする場合、`reverse_sql=RunSQL.noop`だと、ロールバック時に元の制約が復元されない。`reverse_sql`に元の制約を再作成するSQLを明示すること。
-- **ロールバックリスク評価** — データ破壊的なマイグレーション（カラム削除、型変更等）にデータ保全策があるか
-- **マイグレーション内のBulk操作** — 大量データ更新時に`bulk_update()`やiteratorの`chunk_size`指定を使用しているか
-- **複合インデックスで代替可能な単一`db_index`** — `['company', 'year', 'month']`のような複合インデックスが存在する場合、`year`・`month`への個別`db_index=True`は冗長
-- **一意制約追加前の重複データ検証** `[新観点 from PR#480]` — `unique=True` を追加する migration で、既存の重複データを事前チェックする `RunPython` がないと本番適用時に `IntegrityError` が発生する。`RunPython` で重複を検出して `RuntimeError` で停止するか、重複解消ロジックを含めること
-- **`update_or_create()`はfull_clean()を呼ばない** → `Meta.constraints`に`CheckConstraint`を追加してDB側でも制約すること。特に`CharField`の正規表現バリデーションや`IntegerField`の範囲バリデーションが対象（→ `references/code-examples.md`）
-- **Migration インポート位置** `[新観点 from PR#480]` - `django.db.models` の汎用クラス（Count など）は関数内ではなくモジュールトップでインポートする。モデル取得（`apps.get_model()`）は関数内が必須だが、汎用クラスはトップレベルで OK。
-- **Python/JS間の数値精度不整合** `[新観点 from PR#560]` — Python の任意精度整数をそのまま許可すると、JS の `Number.MAX_SAFE_INTEGER` (2^53-1) を超える値がフロントエンドで丸められデータ破損する。数値バリデーションでは JS 安全整数範囲チェックを追加すること。
+- 🔴 Critical: <N>
+- 🟠 Major: <N>
+- 🟡 Minor: <N>
+- 🔵 Trivial: <N>
+```
 
 ---
 
@@ -248,18 +137,19 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 - 重要度インジケーターを省略
 - actionableな修正案なしにフィードバック
-- Core Checklistの項目をスキップ
+- チェックリストの項目をスキップ
 - `Any`型の使用を見逃す
 - N+1クエリ問題・`SELECT *`問題を見逃す
 - Result型の`_`でのエラー無視を見逃す
 - テスト命名規約の順序違反・クラスベーステストを見逃す
 - コードdiffなしに修正案を提示
+- **サブエージェントを直列で実行する（必ず並列起動）**
 
 ---
 
 ## Sub-Agent Output Format
 
-サブエージェントとして実行された場合、以下の構造で結果を返す。
+サブエージェントとして実行された場合も、内部で5並列サブエージェントを起動し、結果をマージして以下の構造で返す。
 
 ### 出力構造
 
