@@ -177,6 +177,7 @@ git diff --name-only origin/dev...HEAD | grep "^frontend/"
 - **ソートテストの non-null assertion** `[新観点 from PR#480]` - ループ範囲が保証されているソート検証テストで `data?.[i+1].createdAt.getTime() ?? 0` のパターンは false positive のリスク。`expect(data!.length).toBeGreaterThanOrEqual(2)` を追加し `data![i]`/`data![i+1]` の non-null assertion を使う。
 - **テストモック正規表現の厳密化** `[新観点 from PR#480]` — Playwrightの `page.route()` やMSWの正規表現パターンに `$` アンカーを付けているか確認。広すぎるパターンは将来エンドポイント追加時に衝突する
 - **実装追加時のテストケース同期** `[新観点 from PR#555]` — 既存の判定関数やユーティリティに新しいケース（例: concatColumns）を追加した場合、対応するテストファイルにもケースが追加されているか確認する。実装とテストの不一致は見落としやすい。
+- **timeout スコープの最小化** `[新観点 from PR#569]` — `describe` 全体に `{ timeout: N }` を設定していないか確認。遅いテストケースが1つだけなら、そのテストの `it` ブロックにのみ `{ timeout: N }` を設定する。describe全体への設定は他のテストの潜在的なタイムアウト問題を隠蔽する。
 
 ### Security（セキュリティ）
 
