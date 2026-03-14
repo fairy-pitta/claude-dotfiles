@@ -176,7 +176,7 @@ If there are issues, list them concisely with specific suggestions for improveme
 Each issue should be actionable — state what to change, not just what's wrong.
 REVIEW_INSTRUCTIONS
 
-codex exec - < "$PROMPT"
+codex review - < "$PROMPT"
 rm -f "$PROMPT"
 ```
 
@@ -253,7 +253,7 @@ Codex review rounds: <N>
 
 ```
 実装方法を選んでください:
-1. Codex exec（codex CLIで実装）[デフォルト]
+1. Codex CLI（codex cliで実装）[デフォルト]
 2. Claude Code（このまま実装）
 ```
 
@@ -261,7 +261,7 @@ Codex review rounds: <N>
 
 ## Step 6: 実装
 
-### 6-A: Codex exec（デフォルト）
+### 6-A: Codex CLI（デフォルト）
 
 ```bash
 CLAUDE_MD="$(pwd)/CLAUDE.md"
@@ -288,7 +288,7 @@ Rules:
 6. Do not add extra features, refactoring, or improvements beyond the plan
 EXEC_INSTRUCTIONS
 
-codex exec - < "$PROMPT"
+codex - < "$PROMPT"
 rm -f "$PROMPT"
 ```
 
@@ -380,7 +380,7 @@ If everything looks good, respond with: LGTM
 If there are issues, list them with specific details about what needs to be fixed.
 VERIFY_INSTRUCTIONS
 
-codex exec - < "$PROMPT"
+codex review - < "$PROMPT"
 rm -f "$PROMPT"
 ```
 
@@ -497,5 +497,5 @@ Codex review rounds: <N>
 - 妥当でないと判断した場合、ユーザー確認なしにPRへ返信しない — Step 3 で必ず確認
 - **ユーザー承認なしで Step 6 に進まない**
 - **Codex の出力を読まずに「LGTM」と判定しない**
-- **`codex exec` のプロンプトに CLAUDE.md を含めずに実行しない**
+- **`codex` / `codex review` のプロンプトに CLAUDE.md を含めずに実行しない**
 - **実装者と確認者を同じにしない** — Codex実装→Claude Code確認、Claude Code実装→Codex確認

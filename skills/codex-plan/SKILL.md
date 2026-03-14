@@ -5,7 +5,7 @@ description: Plan作成 → Codexレビューループ（LGTM まで） → ユ�
 
 # Codex Plan
 
-Plan Mode でプランを作成し、Codex CLI (`codex exec`) でレビュー・検証を繰り返してから、ユーザー承認を経て Codex に実装を委譲するスキル。
+Plan Mode でプランを作成し、Codex CLI (`codex review`) でレビュー・検証を繰り返してから、ユーザー承認を経て Codex CLI に実装を委譲するスキル。
 
 Context: $ARGUMENTS
 
@@ -111,7 +111,7 @@ If there are issues, list them concisely with specific suggestions for improveme
 Each issue should be actionable — state what to change, not just what's wrong.
 REVIEW_INSTRUCTIONS
 
-codex exec - < "$PROMPT"
+codex review - < "$PROMPT"
 rm -f "$PROMPT"
 ```
 
@@ -214,7 +214,7 @@ Implement the above plan exactly as specified. Follow these rules:
 6. Do not add extra features, refactoring, or improvements beyond the plan
 EXEC_INSTRUCTIONS
 
-codex exec - < "$PROMPT"
+codex - < "$PROMPT"
 rm -f "$PROMPT"
 ```
 
@@ -309,7 +309,7 @@ rm -f .claude/plan.md
 
 - **ユーザー承認なしで Phase 5 に進まない**
 - **Codex の出力を読まずに「LGTM」と判定しない**
-- **`codex exec` のプロンプトに CLAUDE.md を含めずに実行しない**
+- **`codex` / `codex review` のプロンプトに CLAUDE.md を含めずに実行しない**
 - **プラン修正時にコードを変更しない（プランファイルのみ編集）**
 - **テスト未実行で完了報告しない**
 - **検証エージェントの結果を無視しない**

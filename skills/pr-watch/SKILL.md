@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: PRをCodeRabbitがApproveするまで定期監視。未解決コメントはサブエージェント+codex execで自律対応。ユーザー承認不要の自動運転モード。
+description: PRをCodeRabbitがApproveするまで定期監視。未解決コメントはサブエージェント+codex cliで自律対応。ユーザー承認不要の自動運転モード。
 ---
 
 # PR Watch
@@ -161,9 +161,9 @@ prompt: |
 
   ### 3. 対応実行
 
-  **妥当なコメント → codex exec で修正:**
+  **妥当なコメント → codex cli で修正:**
   1. 修正計画を `.claude/pr-fix-plan.md` に書き出す
-  2. codex exec で実装:
+  2. codex cli で実装:
 
   ```bash
   CLAUDE_MD="$(pwd)/CLAUDE.md"
@@ -173,7 +173,7 @@ prompt: |
   echo -e "\n---\n# Fix Plan\n" >> "$PROMPT"
   cat .claude/pr-fix-plan.md >> "$PROMPT"
   echo -e "\n---\nImplement the fix plan. Follow project conventions. Run tests." >> "$PROMPT"
-  codex exec - < "$PROMPT"
+  codex - < "$PROMPT"
   rm -f "$PROMPT"
   ```
 
@@ -288,7 +288,7 @@ echo "PR #{PR_NUMBER} を閉じ、PR #${NEW_PR_NUMBER} を再作成しました�
 ## Red Flags - Never Do This
 
 - **ユーザーに承認を求めない** — 自律運転モード
-- **CCが直接コードを読まない・修正しない** — サブエージェント + codex exec に委託
+- **CCが直接コードを読まない・修正しない** — サブエージェント + codex cli に委託
 - **Approve済みなのにループを続けない** — 即停止
 - **ステータステーブルを省略しない** — 毎ループ必ず出力する
 - **テストが通らないままコミットしない**

@@ -230,7 +230,7 @@ triage エージェントの結果をテーブルで表示する（数字だけ�
 
 ---
 
-### PHASE 3: CODEX-FIX（plan + codex exec で実装）
+### PHASE 3: CODEX-FIX（plan + codex cli で実装）
 
 **CCは実装しない。codex-fix エージェントに plan 作成と実装を委託する。**
 
@@ -242,7 +242,7 @@ Agent tool で起動する。**triage エージェントが返した「妥当な
 description: "codex-fix: plan and implement review findings"
 prompt: |
   あなたはコード修正のサブエージェントです。
-  レビュー指摘を受けて、plan を作成し、codex exec で実装します。
+  レビュー指摘を受けて、plan を作成し、codex cli で実装します。
 
   ## 妥当な指摘一覧
   <triage エージェントの「妥当な指摘」セクションをここに貼る>
@@ -257,7 +257,7 @@ prompt: |
      - 修正順序（依存関係を考慮）
      - テスト追加が必要な場合はその計画も含める
 
-  ### Step 2: codex exec で実装
+  ### Step 2: codex cli で実装
   以下の bash コマンドで codex に実装を委譲する:
 
   ```bash
@@ -280,7 +280,7 @@ prompt: |
   5. Do not refactor unrelated code
   INSTRUCTIONS
 
-  codex exec - < "$PROMPT"
+  codex - < "$PROMPT"
   rm -f "$PROMPT"
   ```
 
@@ -296,7 +296,7 @@ prompt: |
   ```
 
   テストが失敗した場合:
-  - エラー内容を分析し、plan を修正して再度 codex exec（最大3回リトライ）
+  - エラー内容を分析し、plan を修正して再度 codex cli（最大3回リトライ）
   - 3回失敗したら失敗レポートを返す
 
   ### Step 4: 結果レポート
@@ -307,7 +307,7 @@ prompt: |
   - **Fixed:** N
   - **Failed:** N (details if any)
   - **Test result:** PASS / FAIL
-  - **Codex exec rounds:** N
+  - **Codex cli rounds:** N
 
   修正されたファイル一覧:
   | # | File | What changed |
@@ -327,7 +327,7 @@ codex-fix エージェントの結果サマリーを確認する:
 === PHASE 3: CODEX-FIX ===
 Fixed: <N>/<M>件
 Test: PASS / FAIL
-Codex exec rounds: <N>
+Codex cli rounds: <N>
 ```
 
 #### 3-3. クリーンアップ
@@ -402,7 +402,7 @@ PHASE 3 - CODEX-FIX: Fixed <N>/<M>件 / Test: PASS
 ## Red Flags - Never Do This
 
 - **CCが直接コードを読まない** — コード確認はエージェント内で完結させる
-- **CCが直接コードを修正しない** — 実装は全て codex-fix エージェント経由で codex exec に委託
+- **CCが直接コードを修正しない** — 実装は全て codex-fix エージェント経由で codex cli に委託
 - **CCが妥当性判断しない** — TRIAGE は triage エージェントに委託する
 - **コンテキスト80%超えのまま `/compact` せずに次PHASEへ進まない**
 - **テストが失敗したままコミットしない**
