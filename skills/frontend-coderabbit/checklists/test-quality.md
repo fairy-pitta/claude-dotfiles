@@ -33,6 +33,9 @@
 - **Vue wrapper unmount** `[新観点 from PR#571]` — module-level ref を使うテストで mount した wrapper を afterEach で unmount しているかチェック。前テストの watcher が afterEach のモック書き換えに反応して次テストの呼び出しを汚染する。
 - **data-testid使用** `[新観点 from PR#571]` — テストでテキストマッチ (`button.text() === "..."`) による要素取得を使っていないかチェック。i18n変更に弱い。`data-testid` を使うこと。
 - **companyIdスコープテスト** `[新観点 from PR#571]` — マルチテナント系ロジックで他テナントのデータに影響するケースのテストがあるかチェック。境界条件テストとして重要。
+- **wrapper teardown 漏れ検出** — mount した Vue コンポーネントは afterEach で unmount しないと watcher が残存しテスト間で干渉する。delay('infinite') やペンディング状態のテストでは特にコンポーネントの teardown を確実に行う。afterEach での wrapper.unmount() を標準パターンとする。
+- **エラーコード定数参照** — テストコードでもエラーコード文字列はカタログ定数経由で参照する。文字列リテラルが変更された場合にテストが追従できず壊れるリスクがある。
+- **data-testid 命名規約チェック** — テストハーネスの data-testid もCODING_STANDARDSの命名規約（scope-element-action kebab-case）に従う。
 
 ### Accounting（会計固有ルール）
 
