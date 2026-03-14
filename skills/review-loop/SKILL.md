@@ -1,71 +1,88 @@
 ---
 name: review-loop
-description: Repeat backend-coderabbit or frontend-coderabbit reviews (5 parallel sub-agents each) until all findings on the current branch are addressed.
+description: backend-review / frontend-review の codex 並列レビューを繰り返し、全指摘を解消するまでループ
 ---
 
 # Review Loop
 
-backend-coderabbit / frontend-coderabbit スキルを繰り返し実行し、指摘箇所を全て解消するまでループするスキル。
-各レビューは **5並列サブエージェント** で実行される。
+backend / frontend のチェックリストを codex review で並列実行し、指摘箇所を全て解消するまでループするスキル。
 
 ## Process
 
-### 0. レビュースキルの決定
+### 0. レビュー対象の判定
 
 ```bash
 git diff --name-only origin/dev...HEAD
 ```
 
-| 変更ファイル     | 使用するスキル                   |
-| ---------------- | -------------------------------- |
-| `backend/` のみ  | backend-coderabbit (5並列)       |
-| `frontend/` のみ | frontend-coderabbit (5並列)      |
-| 両方             | 両スキル (最大10並列)            |
+| 変更ファイル     | レビュー対象 |
+| ---------------- | ------------ |
+| `backend/` のみ  | backend 5並列 |
+| `frontend/` のみ | frontend 5並列 |
+| 両方             | 両方 最大10並列 |
 
-### 1. 初回レビュー実行
+### 1. codex review 並列実行
 
-上記で決定したスキルの **カテゴリ別チェックリストを直接サブエージェントで並列起動** する。
+チェックリストを codex review に渡して Bash バックグラウンドジョブで同時実行する。
 
-**Backend (5並列):**
+```bash
+SKILLS_DIR="$HOME/.claude/skills"
+CLAUDE_MD="$(pwd)/CLAUDE.md"
+RESULTS_DIR=$(mktemp -d /tmp/review-loop.XXXXXX)
 
-| Agent | checklist |
-|-------|-----------|
-| `backend-review: architecture` | `$HOME/.claude/skills/backend-coderabbit/checklists/architecture.md` |
-| `backend-review: type-safety` | `$HOME/.claude/skills/backend-coderabbit/checklists/type-safety.md` |
-| `backend-review: db-performance` | `$HOME/.claude/skills/backend-coderabbit/checklists/db-performance.md` |
-| `backend-review: test-quality` | `$HOME/.claude/skills/backend-coderabbit/checklists/test-quality.md` |
-| `backend-review: security-errors` | `$HOME/.claude/skills/backend-coderabbit/checklists/security-errors.md` |
+# Backend (HAS_BACKEND の場合)
+for cat in architecture type-safety db-performance test-quality security-errors; do
+  PROMPT="$RESULTS_DIR/prompt-be-${cat}.txt"
+  {
+    echo "# Project Rules"
+    [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD"
+    echo -e "\n---\n# Checklist"
+    cat "$SKILLS_DIR/backend-coderabbit/checklists/${cat}.md"
+    echo -e "\n---\n# Code Examples"
+    cat "$SKILLS_DIR/backend-coderabbit/references/code-examples.md"
+    echo -e "\n---"
+    echo "Backend code review. Check changed backend/ files against the checklist. Report findings only."
+    echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
+    echo 'If no issues: "No findings."'
+  } > "$PROMPT"
+  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/be-${cat}.txt" 2>&1 &
+done
 
-**Frontend (5並列):**
+# Frontend (HAS_FRONTEND の場合)
+for cat in fsd-architecture type-state error-vue tanstack-security test-quality; do
+  PROMPT="$RESULTS_DIR/prompt-fe-${cat}.txt"
+  {
+    echo "# Project Rules"
+    [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD"
+    echo -e "\n---\n# Checklist"
+    cat "$SKILLS_DIR/frontend-coderabbit/checklists/${cat}.md"
+    echo -e "\n---\n# Code Examples"
+    cat "$SKILLS_DIR/frontend-coderabbit/references/code-examples.md"
+    echo -e "\n---"
+    echo "Frontend code review. Check changed frontend/ files against the checklist. Report findings only."
+    echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
+    echo 'If no issues: "No findings."'
+  } > "$PROMPT"
+  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
+done
 
-| Agent | checklist |
-|-------|-----------|
-| `frontend-review: fsd-architecture` | `$HOME/.claude/skills/frontend-coderabbit/checklists/fsd-architecture.md` |
-| `frontend-review: type-state` | `$HOME/.claude/skills/frontend-coderabbit/checklists/type-state.md` |
-| `frontend-review: error-vue` | `$HOME/.claude/skills/frontend-coderabbit/checklists/error-vue.md` |
-| `frontend-review: tanstack-security` | `$HOME/.claude/skills/frontend-coderabbit/checklists/tanstack-security.md` |
-| `frontend-review: test-quality` | `$HOME/.claude/skills/frontend-coderabbit/checklists/test-quality.md` |
+wait
 
-各サブエージェントの共通プロンプト:
-```
-あなたはコードレビューのサブエージェントです。
-
-1. チェックリストを読む: `<checklist_path>`
-2. コード例示を読む: `<skill_dir>/references/code-examples.md`
-3. 共通フォーマットを読む: `$HOME/.claude/skills/references/review-format.md`
-4. プロジェクトの CLAUDE.md を読む
-5. `git diff --name-only origin/dev...HEAD -- '<path_filter>'` で変更ファイルを取得
-6. 各変更ファイルを読んでレビューを実施（全項目必須）
-7. 結果をテーブル + 詳細フォーマットで返す
-
-コードの修正は行わず、検出と報告のみ行うこと。
+# 結果収集
+for f in "$RESULTS_DIR"/*.txt; do
+  [[ "$(basename "$f")" == prompt-* ]] && continue
+  echo "=== $(basename "$f" .txt) ==="
+  cat "$f"
+  echo
+done
+rm -rf "$RESULTS_DIR"
 ```
 
 レビュー結果を確認し、指摘事項を収集する。
 
 ### 2. 指摘事項の分析
 
-全サブエージェントのレビュー結果を集約・重複排除し、以下を抽出：
+全結果を集約・重複排除し、以下を抽出：
 
 - 🔴 Critical（必須修正）
 - 🟠 Major（要修正）
@@ -92,7 +109,7 @@ git diff --name-only origin/dev...HEAD
 
 ### 4. 再レビュー
 
-修正完了後、再度同じカテゴリ別サブエージェントを並列起動する。
+修正完了後、再度同じ codex review 並列実行を行う。
 
 ### 5. ループ判定
 
@@ -145,8 +162,8 @@ git diff --name-only origin/dev...HEAD
 
 ## Critical Constraints
 
-- **毎回必ずカテゴリ別チェックリストのサブエージェントを並列起動すること**（直接レビューを行わない）
-- 修正はスキルの指摘に基づくこと
+- **codexレビューは必ず並列実行**（直列禁止）
+- 修正はレビュー指摘に基づくこと
 - 新しい問題を導入しないよう注意
 - 最大20回のループで終了
 - 各ループの結果を明確に報告

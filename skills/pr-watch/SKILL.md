@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: PRをCodeRabbitがApproveするまで定期監視。未解決コメントは自律対応、なければfull reviewをリクエスト。ユーザー承認不要の自動運転モード。
+description: PRをCodeRabbitがApproveするまで定期監視。未解決コメントはサブエージェント+codex execで自律対応。ユーザー承認不要の自動運転モード。
 ---
 
 # PR Watch
@@ -78,7 +78,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 **前提: ユーザー承認不要。全て自律的に判断・実行する。**
 
-**コンテキスト管理:** 各ステップの完了後にコンテキスト使用率を確認し、**80%以上なら `/compact` を実行**してから次のステップへ進む。特に iterate-pr でコード修正を行った後は必ず確認すること。
+**コンテキスト管理:** 各ステップの完了後にコンテキスト使用率を確認し、**80%以上なら `/compact` を実行**してから次のステップへ進む。
 
 #### 1. PR情報の取得とステータステーブルの表示
 
@@ -126,45 +126,97 @@ gh api graphql \
   jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)]'
 ```
 
-#### 4a. 未解決コメントがある場合
+#### 4a. 未解決コメントがある場合 → サブエージェントに全委託
 
-**Skill ツールを使って `iterate-pr` スキルを呼び出す。**
+**CCはコードを読まず、修正もしない。** 全てをサブエージェントに委託し、結果サマリーだけ受け取る。
+
+Agent tool で起動:
 
 ```
-Skill tool: skill="iterate-pr"
+description: "pr-watch: fix unresolved comments"
+prompt: |
+  あなたはPRコメント対応のサブエージェントです。
+  ユーザー承認不要の自律運転モード。全て自分で判断して進めてください。
+
+  ## PR情報
+  - PR: #{PR_NUMBER}
+  - Repo: {OWNER}/{REPO}
+
+  ## タスク
+
+  ### 1. 未解決コメント取得
+  以下のGraphQLクエリで未解決スレッドを取得:
+
+  gh api graphql \
+    -f owner="{OWNER}" -f repo="{REPO}" -F number={PR_NUMBER} \
+    -F query=@/tmp/pr_query.graphql | \
+    jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)]'
+
+  ### 2. 各コメントの妥当性判断
+  各コメントについて:
+  1. 対象コードを Read tool で読む（必須）
+  2. CLAUDE.md を読む
+  3. CODING_STANDARDS.md があれば読む
+  4. 判定: 妥当 / スコープ外 / 妥当でない
+
+  ### 3. 対応実行
+
+  **妥当なコメント → codex exec で修正:**
+  1. 修正計画を `.claude/pr-fix-plan.md` に書き出す
+  2. codex exec で実装:
+
+  ```bash
+  CLAUDE_MD="$(pwd)/CLAUDE.md"
+  PROMPT=$(mktemp /tmp/pr-watch-fix.XXXXXX)
+  echo "# Project Rules (MUST follow)" > "$PROMPT"
+  [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+  echo -e "\n---\n# Fix Plan\n" >> "$PROMPT"
+  cat .claude/pr-fix-plan.md >> "$PROMPT"
+  echo -e "\n---\nImplement the fix plan. Follow project conventions. Run tests." >> "$PROMPT"
+  codex exec - < "$PROMPT"
+  rm -f "$PROMPT"
+  ```
+
+  3. テスト実行（pytest / type-check / lint / test:unit）
+  4. テスト失敗 → 直接修正して再テスト（最大3回）
+  5. `/commit-push` でコミット＆プッシュ
+  6. 各 comment_id に「Fixed in {commit_hash}」を返信
+
+  **スコープ外コメント:**
+  - ファイル内完結 → 上記と同様に修正
+  - 大規模 → GitHub Issue 作成 → PRスレッドにIssueリンクを返信
+
+  **妥当でないコメント → PRスレッドに理由を返信:**
+  gh api repos/{OWNER}/{REPO}/pulls/comments/{comment_id}/replies \
+    --method POST --field body="{理由}"
+
+  ### 4. レビュー観点追加
+  修正した指摘について、チェックリストに観点を追記:
+  - backend/ → ~/claude-dotfiles/skills/backend-coderabbit/checklists/ 配下
+  - frontend/ → ~/claude-dotfiles/skills/frontend-coderabbit/checklists/ 配下
+  追記後: cd ~/claude-dotfiles && git add skills/ && git commit -m "feat: PR#{PR_NUMBER}の指摘からレビュースキルに観点を追加" && git push
+
+  ### 5. クリーンアップ
+  rm -f .claude/pr-fix-plan.md
+
+  ### 6. 結果レポート
+  以下の形式で返す:
+
+  ## Fix Result
+  - 修正: N件
+  - Issue作成: N件
+  - 返信: N件（妥当でない旨）
+  - 観点追加: N件
+  - テスト: PASS / FAIL
 ```
 
-**ただし、pr-watch は自律運転モードのため、iterate-pr の以下のステップをオーバーライドする:**
+サブエージェントの結果サマリーを確認後、`@coderabbitai full review` をPRにコメント:
 
-| iterate-pr のステップ | pr-watch でのオーバーライド |
-|---|---|
-| Step 0: Worktree作成 | **スキップ** — 現在のブランチで直接作業する |
-| Step 4-1: 妥当でないコメントをユーザーに提示 | **スキップ** — 自分で判断して即座にPRスレッドに返信 |
-| Step 4-2: pr-context.md 書き出し | **スキップ** — 不要 |
-| Step 4-3: Plan Mode で承認待ち | **スキップ** — Plan Mode に入らず直接修正する |
-| Step 5: Stop hook 待ち | **Stop hook はスキップ** — 修正完了後すぐに返信・resolve を自分で実行。**ただし Task C（レビュースキルへの観点追加）は実行する** |
+```bash
+gh pr comment {PR_NUMBER} --body "@coderabbitai full review"
+```
 
-**つまり、iterate-pr の Step 1〜3（取得・分類・妥当性判断）は従い、Step 4 は自律的に実行、Step 5 は Task C のみ実行する。**
-
-**重要ルール:**
-- ユーザー承認を待たない。自分で妥当性を判断して進める
-- 妥当なコメント → コードを修正 → テスト → コミット → プッシュ → `Fixed in <commit-hash>` を返信 → resolve
-- 妥当だがスコープ外のコメント → 規模で判断:
-  - **ファイル内で完結する修正** → そのまま修正する（妥当なコメントと同じフロー）
-  - **大規模な修正**（複数ファイル横断、設計変更等） → GitHub Issue を作成 → PRスレッドにIssueリンクを返信 → resolve
-  - 「スコープ外なので対応しません」で終わるのは禁止
-- 妥当でないコメント → PRスレッドに理由を返信（ユーザー確認なしで直接返信）
-- 全件対応後、`@coderabbitai full review` をPRにコメント
-- **full review連投カウンタをリセットする**（コメント対応後の再リクエストは新規扱い）
-- **レビュースキルへの観点追加を必ず実行する**（iterate-pr Step 8 Agent C）:
-  - `backend/` の指摘 → `~/claude-dotfiles/skills/backend-coderabbit/checklists/` 配下の該当カテゴリファイルに追記:
-    - Architecture/Code Org/Syntax → `architecture.md`, Type Safety/Validation → `type-safety.md`
-    - DB/Migration → `db-performance.md`, Test → `test-quality.md`, Security/Errors → `security-errors.md`
-  - `frontend/` の指摘 → `~/claude-dotfiles/skills/frontend-coderabbit/checklists/` 配下の該当カテゴリファイルに追記:
-    - FSD/Code Org/Syntax → `fsd-architecture.md`, Type/State → `type-state.md`
-    - Error/Vue → `error-vue.md`, TanStack/Security → `tanstack-security.md`, Test → `test-quality.md`
-  - フォーマット: `- **<観点名>** [新観点 from PR#<number>] - <チェック内容>。<理由>。<対策>。`
-  - 追記後 claude-dotfiles にコミット＆プッシュ
+**full review連投カウンタをリセットする。**
 
 #### 4b. 未解決コメントがない場合 → full review リクエスト
 
@@ -236,9 +288,9 @@ echo "PR #{PR_NUMBER} を閉じ、PR #${NEW_PR_NUMBER} を再作成しました�
 ## Red Flags - Never Do This
 
 - **ユーザーに承認を求めない** — 自律運転モード
+- **CCが直接コードを読まない・修正しない** — サブエージェント + codex exec に委託
 - **Approve済みなのにループを続けない** — 即停止
 - **ステータステーブルを省略しない** — 毎ループ必ず出力する
-- **iterate-pr でPlan Modeに入らない** — 自律モードではPlan Mode不要、直接修正する
 - **テストが通らないままコミットしない**
 - **6回以上 full review を連投しない** — 5回無反応ならPR再作成
 - **コンテキスト80%超えのまま `/compact` せずに次ステップへ進まない**

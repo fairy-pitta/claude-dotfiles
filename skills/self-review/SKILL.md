@@ -1,11 +1,11 @@
 ---
 name: self-review
-description: 全工程をサブエージェントに委託する完全オーケストレーター。REVIEW(並列)→TRIAGE(エージェント)→CODEX-FIX(エージェント)→COMMIT。CCはエージェント起動と結果サマリーの確認のみ。
+description: 全工程をサブエージェントに委託する完全オーケストレーター。REVIEW(codex並列)→TRIAGE(エージェント)→CODEX-FIX(エージェント)→COMMIT。CCはエージェント起動と結果サマリーの確認のみ。
 ---
 
 # Self Review Orchestrator
 
-**CCは純粋なオーケストレーター。** レビュー・妥当性判断・実装の全てをサブエージェントに委託し、CCはエージェントの起動と結果サマリーの確認のみ行う。
+**CCは純粋なオーケストレーター。** レビュー・妥当性判断・実装の全てをサブエージェント/codexに委託し、CCはエージェントの起動と結果サマリーの確認のみ行う。
 
 **Announce at start:** "self-review を開始します。全工程エージェント委託で全指摘ゼロを目指します。"
 
@@ -14,14 +14,14 @@ description: 全工程をサブエージェントに委託する完全オーケ�
 ## CCの役割（厳守）
 
 CCがやること:
-- エージェントを起動する
-- エージェントの**サマリー結果**を読む（詳細はエージェント内で完結）
+- codex review / エージェントを起動する
+- **サマリー結果**を読む（詳細はエージェント内で完結）
 - ループ継続/終了を判断する
 - `/commit-push` でコミットする
 
 CCがやらないこと:
 - コードを読む（エージェントがやる）
-- レビューする（エージェントがやる）
+- レビューする（codexがやる）
 - 妥当性を判断する（エージェントがやる）
 - コードを修正する（エージェントがやる）
 
@@ -32,7 +32,7 @@ CCがやらないこと:
 **各 PHASE の終わりにコンテキスト使用率を確認し、80% 以上なら即 `/compact` する。**
 
 - compact 後もループは継続する
-- **全工程エージェント委託により、CCのコンテキスト消費は最小限**
+- **全工程エージェント/codex委託により、CCのコンテキスト消費は最小限**
 
 ---
 
@@ -48,25 +48,6 @@ git diff --name-only origin/dev...HEAD
 
 変更パスから `HAS_BACKEND`（`backend/` あり）、`HAS_FRONTEND`（`frontend/` あり）を判定する。
 
-### codex review 用プロンプト準備
-
-```bash
-CLAUDE_MD="$(pwd)/CLAUDE.md"
-SKILLS_DIR="$HOME/.claude/skills"
-
-CODEX_PROMPT=$(mktemp /tmp/self-review-codex.XXXXXX)
-echo "# Project Rules (CLAUDE.md)" > "$CODEX_PROMPT"
-[ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$CODEX_PROMPT"
-echo -e "\n---\n" >> "$CODEX_PROMPT"
-PLAN_FILE=".claude/plan.md"
-if [ -f "$PLAN_FILE" ]; then
-  echo "# Implementation Plan" >> "$CODEX_PROMPT"
-  cat "$PLAN_FILE" >> "$CODEX_PROMPT"
-  echo -e "\n---\n" >> "$CODEX_PROMPT"
-fi
-cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$CODEX_PROMPT"
-```
-
 ---
 
 ## メインループ
@@ -77,101 +58,84 @@ cat "$SKILLS_DIR/sora-review/SKILL.md" >> "$CODEX_PROMPT"
 
 ---
 
-### PHASE 1: REVIEW（全レビューを並列サブエージェントに委託）
+### PHASE 1: REVIEW（codex並列レビュー）
 
-**全レビューエージェントを同一メッセージで並列起動する。**
+**全レビューを codex review の Bash バックグラウンドジョブで並列実行する。**
 CCはレビューを行わず、結果を待つだけ。
 
-#### 起動するエージェント一覧
-
-| # | Agent | 条件 | description |
-|---|-------|------|-------------|
-| 1 | sora-review | 常時 | `sora-review sub-agent` |
-| 2-6 | backend-coderabbit 5並列 | HAS_BACKEND | `backend-review: {category}` |
-| 7-11 | frontend-coderabbit 5並列 | HAS_FRONTEND | `frontend-review: {category}` |
-| 12 | frontend-architecture | HAS_FRONTEND | `frontend-architecture sub-agent` |
-
-**最大12エージェント同時起動。** 条件に該当しないものはスキップ。
-
-#### sora-review プロンプト
-
-```
-あなたはコードレビューのサブエージェントです。
-
-1. `$HOME/.claude/skills/sora-review/SKILL.md` を読む
-2. `$HOME/.claude/skills/sora-review/references/` 配下を全て読む
-3. プロジェクトの CLAUDE.md を読む
-4. `git diff --name-only origin/dev...HEAD` で変更ファイルを取得
-5. 各変更ファイルを読んでレビュー
-6. 「Sub-Agent Output Format」で結果を返す
-
-コードの修正は行わず、検出と報告のみ。
-```
-
-#### coderabbit 5並列プロンプト（backend / frontend 共通）
-
-```
-あなたはコードレビューのサブエージェントです。
-
-1. チェックリストを読む: `<checklist_path>`
-2. コード例示を読む: `<skill_dir>/references/code-examples.md`
-3. 共通フォーマットを読む: `$HOME/.claude/skills/references/review-format.md`
-4. プロジェクトの CLAUDE.md を読む
-5. `git diff --name-only origin/dev...HEAD -- '<path_filter>'` で変更ファイルを取得
-6. 各変更ファイルを読んでレビュー（全項目必須）
-7. 結果を返す:
-
-| # | File | Severity | Checklist ID | Issue |
-|---|------|----------|-------------|-------|
-
-各指摘の詳細（CodeRabbitフォーマット: category + severity + title + explanation + diff）
-
-コードの修正は行わず、検出と報告のみ。
-```
-
-**Backend 5エージェント:**
-
-| description | checklist | path_filter |
-|------------|-----------|-------------|
-| `backend-review: architecture` | `backend-coderabbit/checklists/architecture.md` | `backend/` |
-| `backend-review: type-safety` | `backend-coderabbit/checklists/type-safety.md` | `backend/` |
-| `backend-review: db-performance` | `backend-coderabbit/checklists/db-performance.md` | `backend/` |
-| `backend-review: test-quality` | `backend-coderabbit/checklists/test-quality.md` | `backend/` |
-| `backend-review: security-errors` | `backend-coderabbit/checklists/security-errors.md` | `backend/` |
-
-**Frontend 5エージェント:**
-
-| description | checklist | path_filter |
-|------------|-----------|-------------|
-| `frontend-review: fsd-architecture` | `frontend-coderabbit/checklists/fsd-architecture.md` | `frontend/` |
-| `frontend-review: type-state` | `frontend-coderabbit/checklists/type-state.md` | `frontend/` |
-| `frontend-review: error-vue` | `frontend-coderabbit/checklists/error-vue.md` | `frontend/` |
-| `frontend-review: tanstack-security` | `frontend-coderabbit/checklists/tanstack-security.md` | `frontend/` |
-| `frontend-review: test-quality` | `frontend-coderabbit/checklists/test-quality.md` | `frontend/` |
-
-#### frontend-architecture プロンプト
-
-```
-あなたはフロントエンドアーキテクチャチェックのサブエージェントです。
-
-1. `$HOME/.claude/skills/frontend-architecture/SKILL.md` を読む
-2. プロジェクトの CLAUDE.md と CODING_STANDARDS.md を読む
-3. `git diff --name-only origin/dev...HEAD -- 'frontend/src/'` で変更ファイルを取得
-4. SKILL.md の全7カテゴリをチェック
-5. Findings テーブル + Summary で結果を返す
-
-コードの修正は行わず、検出と報告のみ。
-```
-
-#### codex review CLI（Bash 直接）
-
-レビューエージェントの返答を待っている間に、codex review を並行で実行する:
+#### codex review 並列実行
 
 ```bash
-codex review --base dev - < "$CODEX_PROMPT"
+SKILLS_DIR="$HOME/.claude/skills"
+CLAUDE_MD="$(pwd)/CLAUDE.md"
+RESULTS_DIR=$(mktemp -d /tmp/self-review.XXXXXX)
+
+# --- Backend checklists (HAS_BACKEND の場合のみ) ---
+for cat in architecture type-safety db-performance test-quality security-errors; do
+  PROMPT="$RESULTS_DIR/prompt-be-${cat}.txt"
+  {
+    echo "# Project Rules"
+    [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD"
+    echo -e "\n---\n# Checklist"
+    cat "$SKILLS_DIR/backend-coderabbit/checklists/${cat}.md"
+    echo -e "\n---\n# Code Examples"
+    cat "$SKILLS_DIR/backend-coderabbit/references/code-examples.md"
+    echo -e "\n---"
+    echo "Backend code review. Check changed backend/ files against the checklist. Report findings only."
+    echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
+    echo 'If no issues: "No findings."'
+  } > "$PROMPT"
+  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/be-${cat}.txt" 2>&1 &
+done
+
+# --- Frontend checklists (HAS_FRONTEND の場合のみ) ---
+for cat in fsd-architecture type-state error-vue tanstack-security test-quality; do
+  PROMPT="$RESULTS_DIR/prompt-fe-${cat}.txt"
+  {
+    echo "# Project Rules"
+    [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD"
+    echo -e "\n---\n# Checklist"
+    cat "$SKILLS_DIR/frontend-coderabbit/checklists/${cat}.md"
+    echo -e "\n---\n# Code Examples"
+    cat "$SKILLS_DIR/frontend-coderabbit/references/code-examples.md"
+    echo -e "\n---"
+    echo "Frontend code review. Check changed frontend/ files against the checklist. Report findings only."
+    echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
+    echo 'If no issues: "No findings."'
+  } > "$PROMPT"
+  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
+done
+
+# --- General codex review (常時) ---
+GENERAL_PROMPT="$RESULTS_DIR/prompt-general.txt"
+{
+  echo "# Project Rules"
+  [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD"
+  PLAN_FILE=".claude/plan.md"
+  if [ -f "$PLAN_FILE" ]; then
+    echo -e "\n---\n# Implementation Plan"
+    cat "$PLAN_FILE"
+  fi
+} > "$GENERAL_PROMPT"
+codex review --base dev - < "$GENERAL_PROMPT" > "$RESULTS_DIR/general.txt" 2>&1 &
+
+wait
 ```
 
-#### ↓ 全エージェント完了 + codex review 完了 → PHASE 2 へ
+**注意:** `HAS_BACKEND=false` の場合は backend ループを丸ごとスキップ、`HAS_FRONTEND=false` の場合は frontend ループを丸ごとスキップする。
+
+#### 結果収集
+
+```bash
+echo "=== Review Results ==="
+for f in "$RESULTS_DIR"/*.txt; do
+  [[ "$(basename "$f")" == prompt-* ]] && continue
+  echo "--- $(basename "$f" .txt) ---"
+  cat "$f"
+  echo
+done
+rm -rf "$RESULTS_DIR"
+```
 
 #### ↓ コンテキスト確認 → 80% 以上なら `/compact`
 
@@ -191,7 +155,7 @@ prompt: |
   あなたはレビュー指摘の妥当性を判断するサブエージェントです。
 
   ## 全 findings
-  <PHASE 1 の全エージェント + codex review の結果をここに貼る>
+  <PHASE 1 の codex review 結果をここに貼る>
 
   ## タスク
 
@@ -376,12 +340,10 @@ rm -f .claude/self-review-fix-plan.md
 === Round <N> Summary ===
 
 PHASE 1 - REVIEW:
-  sora-review:           <N>件
-  backend-coderabbit:    <N>件 (arch:<n> type:<n> db:<n> test:<n> sec:<n>)
-  frontend-coderabbit:   <N>件 (fsd:<n> type:<n> err:<n> tanstack:<n> test:<n>)
-  frontend-architecture: <N>件
-  codex review:          <N>件
-  合計:                  <N>件
+  backend:   <N>件 (arch:<n> type:<n> db:<n> test:<n> sec:<n>)
+  frontend:  <N>件 (fsd:<n> type:<n> vue:<n> query:<n> test:<n>)
+  general:   <N>件
+  合計:      <N>件
 
 PHASE 2 - TRIAGE:
   妥当: <M>件 / 除外: <K>件
@@ -411,9 +373,6 @@ PHASE 3 - CODEX-FIX:
 | 2 | <N> | <M> | <K> | <N> | PASS |
 | ... | | | | | |
 
-# クリーンアップ
-rm -f "$CODEX_PROMPT"
-
 全レビューで指摘なしを確認しました。
 ```
 
@@ -428,7 +387,7 @@ rm -f "$CODEX_PROMPT"
 - **テストが失敗したままコミットしない**
 - **サブエージェントの結果サマリーを確認せずに次へ進まない**
 - **`fix: レビュー対応` 等の抽象的なコミットメッセージを使わない**
-- **レビューエージェントを直列で実行しない（必ず並列起動）**
+- **codexレビューを直列で実行しない（必ず並列起動）**
 - **codex-fix エージェントにレビューをさせない（codex-fix は修正のみ）**
 - **PHASE 順序を変えない（REVIEW → TRIAGE → CODEX-FIX → COMMIT）**
 - **エージェントの詳細結果をCCのコンテキストに展開しない** — サマリーだけ確認する
