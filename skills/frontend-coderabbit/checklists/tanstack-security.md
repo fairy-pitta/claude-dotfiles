@@ -28,6 +28,7 @@
 - **invalidateQueries 後の重複 refetch** — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
 - **Promise.allSettled + AbortSignal チェック** — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
 - **フォールバックデータソースのローディング状態反映** — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
+- **APIレスポンス必須フィールド検証** — 後続処理の前提となるレスポンスフィールド（ID等）の存在チェックが抜けていないか確認する。サーバーが予期しないレスポンスを返した場合に状態不整合やサイレント障害の原因になる。== null チェックでガードする。
 
 ### Error Handling Pipeline
 

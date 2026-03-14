@@ -27,6 +27,7 @@
 - **timeout スコープの最小化** — `describe` 全体に `{ timeout: N }` を設定していないか確認。遅いテストケースが1つだけなら、そのテストの `it` ブロックにのみ `{ timeout: N }` を設定する。describe全体への設定は他のテストの潜在的なタイムアウト問題を隠蔽する。
 - **テストヘルパー共通化** — `createTestQueryClient()`/`mountWithQuery()`等の共通関数を`tests/helpers/`に集約して使用しているか
 - **data-testidセレクタ優先順位** — role/text > data-testid の優先順位。`data-testid`は`scope-element-action`のkebab-case
+- **テストヘルパー重複検出** — 同一ディレクトリ内のテストファイルで同じヘルパー関数（ファクトリ、スタブ等）が重複定義されていないか確認する。変更漏れやメンテナンス性低下の原因になる。共通ヘルパーファイルに抽出する。
 
 ### Accounting（会計固有ルール）
 
