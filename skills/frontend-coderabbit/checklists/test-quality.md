@@ -10,6 +10,7 @@
 
 ### Test Quality（テストファイルが変更されている場合）
 
+- **テストデータの独立性（テスト汚染防止）** — テスト間で共有される可変なオブジェクト（dict・array等）がないか。テスト間の暗黙の依存はテスト汚染の原因になる
 - **MSW使用** — APIモックはMSWを使用しているか。`vi.fn()`の直接モック乱用は避ける
 - **テスト期待値の文字列リテラル禁止** — `rejects.toThrow('エラーメッセージ')` 等の期待値に文字列リテラルを直書きしていないか。定数（`MESSAGES.VALIDATION.X`等）を参照する。定数側の変更に追従できず、テストの意図も不明確になる
 - **FormDataを使うmutationテスト** — `FormData`を使うMutationのテストでAxiosアダプターをNode.js httpに設定しているか（`axios.defaults.adapter = 'http'`）（→ `references/code-examples.md`）

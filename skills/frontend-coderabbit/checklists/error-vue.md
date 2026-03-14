@@ -17,6 +17,9 @@
 - [ ] **`v-for`の`:key`安定性** — `:key`にarray indexを使用していないか。`id`等の安定した識別子を使用（→ `references/code-examples.md`）
 - [ ] **Floating Promises** — `async`関数を`await`も`void`もなしに呼び出していないか。意図的なfire-and-forgetは`void`を明示
 - [ ] **Vue Router push() の戻り値確認** - router.push() を try/catch だけでハンドリングしていないか確認する。Vue Router 4.5.x では NavigationFailure はrejectではなくresolveで返るため、`result === undefined`（成功）または `isNavigationFailure(result)` による明示的判定が必要。try/catchのみではナビゲーションガードによる阻止を検出できない。
+- [ ] **既存エラーパターンの無視** — 既存のエラーハンドリングパターン（共通のエラーハンドラ・AppError正規化等）を無視して独自実装を作っていないか。プロジェクトの既存パターンに従うこと
+- [ ] **不要な条件分岐（フレームワーク自動処理）** — Vue/Axios等のフレームワークが自動的に処理する部分に不要な条件分岐を追加していないか。例: Axiosが自動的にundefinedフィールドをJSONから除外する場合の手動チェック
+- [ ] **エッジケースの考慮** — 境界値・ゼロ・空文字・undefined・null等のエッジケースが考慮されているか。`<=` vs `<`の取り違え、off-by-oneエラー等に注意
 
 ---
 
