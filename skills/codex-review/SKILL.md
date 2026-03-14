@@ -41,9 +41,16 @@ cat "$SKILL_FILE" >> "$PROMPT_FILE"
 
 ## Step 2: Run Codex Review
 
+**重要:** `codex review` では `--base`/`--uncommitted`/`--commit` と `[PROMPT]`（stdin `-` 含む）は排他。
+カスタムプロンプトを使う場合は diff をプロンプトに含め、`codex review -` で実行する。
+
 ```bash
-# dev ブランチとの差分をレビュー
-codex review --base dev - < "$PROMPT_FILE"
+# dev ブランチとの差分をプロンプトに追加
+echo -e "\n---\n# Git diff (changes to review)\n" >> "$PROMPT_FILE"
+git diff origin/dev...HEAD >> "$PROMPT_FILE"
+
+# レビュー実行
+codex review - < "$PROMPT_FILE"
 
 # クリーンアップ
 rm "$PROMPT_FILE"
@@ -53,9 +60,10 @@ rm "$PROMPT_FILE"
 
 | 用途 | コマンド |
 |------|---------|
-| dev ブランチとの差分 | `codex review --base dev - < "$PROMPT_FILE"` |
-| ステージング+未ステージ変更 | `codex review --uncommitted - < "$PROMPT_FILE"` |
-| 特定コミット | `codex review --commit <SHA> - < "$PROMPT_FILE"` |
+| カスタムプロンプト + diff | diff をプロンプトに含めて `codex review - < "$PROMPT_FILE"` |
+| dev ブランチとの差分（デフォルトレビュー） | `codex review --base dev` |
+| ステージング+未ステージ変更（デフォルトレビュー） | `codex review --uncommitted` |
+| 特定コミット（デフォルトレビュー） | `codex review --commit <SHA>` |
 
 ## Step 3: Show Output
 
