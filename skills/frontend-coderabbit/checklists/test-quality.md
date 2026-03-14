@@ -28,6 +28,11 @@
 - **テストヘルパー共通化** — `createTestQueryClient()`/`mountWithQuery()`等の共通関数を`tests/helpers/`に集約して使用しているか
 - **data-testidセレクタ優先順位** — role/text > data-testid の優先順位。`data-testid`は`scope-element-action`のkebab-case
 - **テストヘルパー重複検出** — 同一ディレクトリ内のテストファイルで同じヘルパー関数（ファクトリ、スタブ等）が重複定義されていないか確認する。変更漏れやメンテナンス性低下の原因になる。共通ヘルパーファイルに抽出する。
+- **mutation空入力ガード** `[新観点 from PR#571]` — mutation関数に空配列やnull入力が来た場合のガードがあるかチェック。呼び出し元の暗黙の仮定に依存せず、防御的にAPIを叩かないガードを入れること。
+- **テストモック完全リセット** `[新観点 from PR#571]` — afterEach で全モックフィールドがリセットされているかチェック。新しいモックフィールド追加時にリセットリストへの追加漏れが多い。
+- **Vue wrapper unmount** `[新観点 from PR#571]` — module-level ref を使うテストで mount した wrapper を afterEach で unmount しているかチェック。前テストの watcher が afterEach のモック書き換えに反応して次テストの呼び出しを汚染する。
+- **data-testid使用** `[新観点 from PR#571]` — テストでテキストマッチ (`button.text() === "..."`) による要素取得を使っていないかチェック。i18n変更に弱い。`data-testid` を使うこと。
+- **companyIdスコープテスト** `[新観点 from PR#571]` — マルチテナント系ロジックで他テナントのデータに影響するケースのテストがあるかチェック。境界条件テストとして重要。
 
 ### Accounting（会計固有ルール）
 
