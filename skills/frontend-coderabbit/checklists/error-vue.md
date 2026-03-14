@@ -38,6 +38,33 @@
 - **配列の境界外アクセスパターン** — `array[index]` がundefinedになるケースでサイレントに失敗する実装をチェック。配列要素の存在チェック時に「要素がまだ存在しないケース」も考慮しているか確認する。未存在時はcreate/pushすべきか検討。
 - **try/catch スコープの肥大化** — 複数の非同期操作が1つのtry/catchに入っていないかチェック。後続操作の失敗が先行操作の失敗として誤報告される。各操作のエラーハンドリングをスコープ分離する。
 
+### Component & Composable Design
+
+- **コンポーネントサイズ制限** — `<template>` 100行(soft)/140行(hard)、`<script setup>` 80行(soft)/120行(hard)、Props 7(soft)/10(hard)、Emits 5(soft)/8(hard)。Hard超過は🔴違反
+- **Props/Emitsは型定義形式** — `defineProps({ title: String })`のランタイム宣言禁止。`defineProps<{ title: string }>()`の型定義形式を使用
+- **v-model は defineModel()** — Vue 3.5の`defineModel()`を使用。`set`内で非同期副作用を行わない
+- **useTemplateRef() 使用** — DOM参照は`useTemplateRef()`(Vue 3.5)を使用。`ref()`でのDOM参照禁止
+- **render関数禁止** — `shared/ui/`のheadlessラッパーのみ例外で許可
+- **Composable命名** — 通常: `useXxx`、Factory DI版: `createUseXxx`
+- **Composable返り値のreadonly保護** — 可変stateを`readonly()`なしで直接公開しない
+- **Composableサイズ制限** — 行数120(soft)/180(hard)、公開API数5(soft)/7(hard)
+- **emit命名はkebab-case** — emit名はkebab-caseで統一
+- **非同期イベントは親が制御** — 子コンポーネントは通知のみ、親がAPI呼び出し等の副作用を実行。子でasync副作用を直接実行しない
+- **event bus禁止** — mitt/event bus原則禁止。`app/`層の外部イベントアダプタのみ例外
+- **provide/inject使用条件** — 深い受け渡しなら`provide/inject`、アプリ横断なら`composable singleton`、浅いなら`props/emits`。InjectionKey<T>型安全必須
+
+### Performance & Accessibility
+
+- **v-if/v-for同一要素禁止** — `v-if`と`v-for`を同一要素に併用禁止
+- **大量データのvirtual scrolling** — 200行超 or 2,000 DOMノード超でvirtual scrolling必須
+- **computed内の副作用禁止** — computed内でAPI呼び出し・DOM操作・状態変更等の副作用を行わない
+- **watchのonWatcherCleanup** — watch内の非同期処理で`onWatcherCleanup`によるabortを実装
+- **route-level code splitting** — 全ページがlazy importされているか
+- **a11y: label-input紐付け** — `<label>`と`<input>`を`for`/`id`で紐付け
+- **a11y: キーボードナビゲーション** — Tab, Enter, Escape対応
+- **a11y: モーダルにフォーカストラップ** — モーダルダイアログにフォーカストラップ実装
+- **a11y: 画像にalt属性** — 画像に`alt`属性必須（装飾的な場合は`alt=""`）
+
 ### Vue.js Patterns（詳細）
 
 - **非同期レースコンディション** — Composable内の非同期関数が連続呼び出しされた場合、古いレスポンスで状態が上書きされないか。requestIdガードパターンで対策（→ `references/code-examples.md`）

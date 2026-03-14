@@ -25,3 +25,21 @@
 - **実装追加時のテストケース同期** — 既存の判定関数やユーティリティに新しいケース（例: concatColumns）を追加した場合、対応するテストファイルにもケースが追加されているか確認する。実装とテストの不一致は見落としやすい。
 - **テストファイルのFSDインポートルール** — テストファイルでも内部パス直接importではなくバレルエクスポート経由でimportしているかチェック。FSDの「内部直接import禁止」ルールはテストにも適用される。
 - **timeout スコープの最小化** — `describe` 全体に `{ timeout: N }` を設定していないか確認。遅いテストケースが1つだけなら、そのテストの `it` ブロックにのみ `{ timeout: N }` を設定する。describe全体への設定は他のテストの潜在的なタイムアウト問題を隠蔽する。
+- **テストヘルパー共通化** — `createTestQueryClient()`/`mountWithQuery()`等の共通関数を`tests/helpers/`に集約して使用しているか
+- **data-testidセレクタ優先順位** — role/text > data-testid の優先順位。`data-testid`は`scope-element-action`のkebab-case
+
+### Accounting（会計固有ルール）
+
+- **金額をnumberで直接演算禁止** — Amount型関数（`createAmount()`/`addAmounts()`等）経由必須。丸めは明細単位
+- **会計日付のYYYY-MM形式** — `timestamp(UTC)`と`businessDate(YYYY-MM)`を分離。決算月は`YYYY-13`
+- **仕訳系Mutationの楽観更新禁止** — 冪等キー(Idempotency-Key)必須 + UI側submitting ref + API側冪等キーの二重防止
+- **論理削除のみ** — フロントエンドからの削除リクエストは論理削除のみ（物理削除API禁止）
+- **締め処理後のデータ変更禁止** — 月次/年度締め後のデータ変更をUIで禁止。`JournalPeriodStatus`型に基づく制御
+
+### Naming（命名規約）
+
+- **Vue SFCファイル名: PascalCase** — `LoginPage.vue`
+- **TypeScriptファイル名: camelCase** — `userKeys.ts`
+- **ディレクトリ名: kebab-case** — `journal-upload/`
+- **変数/関数: camelCase、型/interface: PascalCase、定数: UPPER_SNAKE_CASE**
+- **Composable: `use` + PascalCase** — `useCurrentUser`

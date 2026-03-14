@@ -11,9 +11,11 @@
 ### FSD Architecture `[最多頻出: FSD 21回, import 15回]`
 
 - [ ] **index.ts（公開API）経由のimport必須** — 外部スライスの内部モジュールへの直接importは絶対NG。`@entities/company/api/companyApi` ではなく `@entities/company` 経由（→ `references/code-examples.md`）
+- [ ] **index.ts は外部公開用入口のみ** — 上位層からの import は index.ts 経由必須だが、同一スライス内部のコード同士は必ず直接パスで import する。内部コードが index.ts を経由すると循環依存の原因になる
 - [ ] **features間の直接import禁止** — features間の直接import（型importも含む）は禁止。共有したい型・ロジックは`entities/`または`shared/`に昇格
 - [ ] **依存方向** — `app → pages → features → entities → shared`（上位→下位のみ）。pages層はfeatures内部（`model/`, `lib/`等）を直接参照禁止
-- [ ] **FSDエイリアス必須** — 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用
+- [ ] **FSDエイリアス必須** — 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用。2階層以上の相対パス（`../../`）禁止
+- [ ] **import順序** — 外部ライブラリ → `@shared/` → `@entities/` → `@features/` → `@pages/` → `@app/` → 相対パスの順
 
 ### Unused Code Detection
 
@@ -36,6 +38,19 @@
 - **Composables→Repository IFを介さず実装に直結はNG** — ComposablesがhttpClient等に直結すると依存方向違反（→ `references/code-examples.md`）
 - **UseCase/Application層のインフラライブラリ依存禁止** — `entities/model/` 配下の UseCase に `import axios from "axios"` 等のインフラライブラリが含まれていないか確認する。Axios エラー変換はリポジトリ（Mutation/Infrastructure）層で行い、UseCase はドメインエラー（プロジェクト定義の Error サブクラス）のみを知るべき
 - **Vue SFC からの型エクスポート禁止** — `.vue` ファイルから `export type` するのは避け、`model/types.ts` 等の純粋な TypeScript ファイルに型を定義する。`index.ts` からは `.vue` ではなく `./model/types` を参照してエクスポートする
+- **Cross-Slice `@x`パターンのルール** — entities間のcross-slice importは`import type`限定、consumer指名ファイル（`@x/<consumer名>.ts`）で管理。`index.ts`の公開APIとは別管理。features間は`@x`含め禁止
+- **features間共有の昇格ルール** — 3+consumerで必要な関数・型がfeature内に残っていないか。業務ロジック（税計算等）は1-2 consumerでも即entities昇格を検討
+- **pages層のオーケストレーション** — 複数featuresを跨ぐ連携はpages層で。features同士が直接importせずpagesがemitsを受け取りroute/query経由で別featureに伝播。連携手段の優先度: Route params > TanStack Query cache > Props/emits > provide/inject
+- **shared層にビジネスロジック禁止** — shared配置のコードが会社・仕訳・ユーザー等の業務概念を知らないこと。shared→FSD上位層への依存禁止
+- **UI配置の判定フロー** — 業務操作→`features/*/ui/`、単一エンティティ表現→`entities/*/ui/`、画面専用レイアウト→`pages/*/`、それ以外→`shared/ui/`
+- **サブスライス内部設計** — 同一feature内のサブスライス間は`model/`または`lib/`を介して連携。サブスライス間の直接相互参照・循環依存禁止
+
+### Dead Code & Backward Compat
+
+- **未使用エクスポート・関数・変数** — export されているが import されていないシンボル、ファイル内の未参照ローカル変数
+- **未使用コンポーネント** — 定義されたがどのテンプレートからも使われていないコンポーネント
+- **後方互換の残骸（禁止）** — `_oldName`等のリネーム済み未使用変数、旧パスからの移行用shim、`// removed`/`// deprecated`コメント付き放置コード、互換用ラッパー関数。不要コードは完全削除
+- **連鎖的デッドコード** — 関数削除に伴い連鎖的に未使用になったヘルパー・型・定数がそのまま残っていないか
 
 ### Code Organization & DRY（詳細）
 
