@@ -73,7 +73,7 @@ If the plan is good, respond with exactly: LGTM
 If there are issues, list them concisely.
 REVIEW_INSTRUCTIONS
 
-codex review --base dev - < "$PROMPT"
+codex review - < "$PROMPT"
 rm -f "$PROMPT"
 ```
 

@@ -56,8 +56,10 @@ Output per finding:
 Then for each finding: category + severity + title + explanation + suggested diff.
 If no issues found, output: "No findings."
 INST
+    echo -e "\n---\n# Git diff (changes to review)\n"
+    git diff origin/dev...HEAD -- frontend/
   } > "$PROMPT"
-  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/${cat}.txt" 2>&1 &
+  codex review - < "$PROMPT" > "$RESULTS_DIR/${cat}.txt" 2>&1 &
 done
 
 wait

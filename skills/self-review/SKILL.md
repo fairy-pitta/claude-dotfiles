@@ -84,8 +84,10 @@ for cat in architecture type-safety db-performance test-quality security-errors;
     echo "Backend code review. Check changed backend/ files against the checklist. Report findings only."
     echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
     echo 'If no issues: "No findings."'
+    echo -e "\n---\n# Git diff (changes to review)\n"
+    git diff origin/dev...HEAD -- backend/
   } > "$PROMPT"
-  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/be-${cat}.txt" 2>&1 &
+  codex review - < "$PROMPT" > "$RESULTS_DIR/be-${cat}.txt" 2>&1 &
 done
 
 # --- Frontend checklists (HAS_FRONTEND の場合のみ) ---
@@ -102,8 +104,10 @@ for cat in fsd-architecture type-state error-vue tanstack-security test-quality;
     echo "Frontend code review. Check changed frontend/ files against the checklist. Report findings only."
     echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
     echo 'If no issues: "No findings."'
+    echo -e "\n---\n# Git diff (changes to review)\n"
+    git diff origin/dev...HEAD -- frontend/
   } > "$PROMPT"
-  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
+  codex review - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
 done
 
 # --- General codex review (常時) ---
@@ -116,8 +120,10 @@ GENERAL_PROMPT="$RESULTS_DIR/prompt-general.txt"
     echo -e "\n---\n# Implementation Plan"
     cat "$PLAN_FILE"
   fi
+  echo -e "\n---\n# Git diff (changes to review)\n"
+  git diff origin/dev...HEAD
 } > "$GENERAL_PROMPT"
-codex review --base dev - < "$GENERAL_PROMPT" > "$RESULTS_DIR/general.txt" 2>&1 &
+codex review - < "$GENERAL_PROMPT" > "$RESULTS_DIR/general.txt" 2>&1 &
 
 wait
 ```
@@ -200,11 +206,22 @@ prompt: |
 
 #### 2-2. 結果の確認
 
-triage エージェントの結果サマリーを確認する:
+triage エージェントの結果をテーブルで表示する（数字だけでなく詳細を見せる）:
 
-```
+```markdown
 === PHASE 2: TRIAGE ===
 全 findings: <N>件 → 妥当: <M>件 / 除外: <K>件
+
+### 妥当な指摘
+| # | Source | File | Severity | Issue |
+|---|--------|------|----------|-------|
+| 1 | be-architecture | path/to/file.py:42 | 🔴 | 簡潔な説明 |
+| 2 | fe-type-state | path/to/file.ts:100 | 🟠 | 簡潔な説明 |
+
+### 除外した指摘
+| # | Source | Issue | 除外理由 |
+|---|--------|-------|---------|
+| 1 | be-type-safety | 型安全性の指摘 | 意図的設計 |
 ```
 
 **妥当な指摘が0件 → ✅ 全指摘なし → ループ終了（完了レポートへ）**
@@ -336,20 +353,24 @@ rm -f .claude/self-review-fix-plan.md
 
 ### ラウンドサマリー
 
-```
+```markdown
 === Round <N> Summary ===
 
-PHASE 1 - REVIEW:
-  backend:   <N>件 (arch:<n> type:<n> db:<n> test:<n> sec:<n>)
-  frontend:  <N>件 (fsd:<n> type:<n> vue:<n> query:<n> test:<n>)
-  general:   <N>件
-  合計:      <N>件
+PHASE 1 - REVIEW: <N>件検出
+| Source | Findings |
+|--------|----------|
+| be-architecture | <N> |
+| fe-type-state | <N> |
+| general | <N> |
 
-PHASE 2 - TRIAGE:
-  妥当: <M>件 / 除外: <K>件
+PHASE 2 - TRIAGE: 妥当 <M>件 / 除外 <K>件
 
-PHASE 3 - CODEX-FIX:
-  Fixed: <N>/<M>件 / Test: PASS
+| # | File | Severity | Issue | 判定 |
+|---|------|----------|-------|------|
+| 1 | path/to/file.py:42 | 🔴 | 説明 | ✅ 妥当 |
+| 2 | path/to/file.ts:10 | 🟡 | 説明 | ❌ 除外: 理由 |
+
+PHASE 3 - CODEX-FIX: Fixed <N>/<M>件 / Test: PASS
 ```
 
 **PHASE 2 で妥当な指摘が 0件 → ループ終了（完了レポートへ）**

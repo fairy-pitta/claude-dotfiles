@@ -44,8 +44,10 @@ for cat in architecture type-safety db-performance test-quality security-errors;
     echo "Backend code review. Check changed backend/ files against the checklist. Report findings only."
     echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
     echo 'If no issues: "No findings."'
+    echo -e "\n---\n# Git diff (changes to review)\n"
+    git diff origin/dev...HEAD -- backend/
   } > "$PROMPT"
-  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/be-${cat}.txt" 2>&1 &
+  codex review - < "$PROMPT" > "$RESULTS_DIR/be-${cat}.txt" 2>&1 &
 done
 
 # Frontend (HAS_FRONTEND の場合)
@@ -62,8 +64,10 @@ for cat in fsd-architecture type-state error-vue tanstack-security test-quality;
     echo "Frontend code review. Check changed frontend/ files against the checklist. Report findings only."
     echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
     echo 'If no issues: "No findings."'
+    echo -e "\n---\n# Git diff (changes to review)\n"
+    git diff origin/dev...HEAD -- frontend/
   } > "$PROMPT"
-  codex review --base dev - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
+  codex review - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
 done
 
 wait
