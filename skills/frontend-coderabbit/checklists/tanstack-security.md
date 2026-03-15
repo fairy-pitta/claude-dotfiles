@@ -28,6 +28,8 @@
 - **invalidateQueries 後の重複 refetch** — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
 - **Promise.allSettled + AbortSignal チェック** — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
 - **フォールバックデータソースのローディング状態反映** — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
+- **keepPreviousDataの会社/テナント切替時staleデータリスク** `[from PR#539]` — `placeholderData: keepPreviousData`を使用しているクエリで、QueryKeyにcompanyId等のテナント識別子が含まれる場合、切替時に前のテナントのデータが一時表示されるリスクがないか確認する。マスターデータ（テナント非依存）以外でのkeepPreviousData使用は要注意
+- **:key再マウントとkeepPreviousDataの無効な組み合わせ** `[from PR#539]` — `:key="$route.path"`等でコンポーネントが再マウントされるページでは、コンポーネント内の`keepPreviousData`は無効（再マウント時にクエリインスタンスが再作成されるため前のデータが参照されない）。無意味なkeepPreviousDataが残っていないか確認する
 - **APIレスポンス必須フィールド検証** — 後続処理の前提となるレスポンスフィールド（ID等）の存在チェックが抜けていないか確認する。サーバーが予期しないレスポンスを返した場合に状態不整合やサイレント障害の原因になる。== null チェックでガードする。
 
 ### Error Handling Pipeline
