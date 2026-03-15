@@ -34,6 +34,7 @@
 - **SSEバッファ残り処理** `[新観点 from PR#486]` — ReadableStreamのdone時にbufferに未処理データが残っていないかチェック。最後のチャンクが改行で終わらない場合にデータ欠落する。
 - **配列の境界外アクセスパターン** `[新観点 from PR#569]` — `array[index]` がundefinedになるケースでサイレントに失敗する実装をチェック。配列要素の存在チェック時に「要素がまだ存在しないケース」も考慮しているか確認する。未存在時はcreate/pushすべきか検討。
 - **try/catch スコープの肥大化** `[新観点 from PR#569]` — 複数の非同期操作が1つのtry/catchに入っていないかチェック。後続操作の失敗が先行操作の失敗として誤報告される。各操作のエラーハンドリングをスコープ分離する。
+- **mutation エラー型の一貫性** `[新観点 from PR#571]` — 同一ファイル内のmutationでerror型（Error vs AppError）が混在していないかチェックする。normalizeAxiosErrorの適用漏れがあると、呼び出し側のisAppError判定が機能しなくなる。新規mutation追加時は既存パターンに合わせてAppError + normalizeAxiosErrorを使用する。
 
 ### Vue.js Patterns（詳細）
 
@@ -61,4 +62,6 @@
 - **aria-disabled疑似クラス** `[新観点 from PR#555]` - aria-disabledに変更した場合、:hover/:focus等の疑似クラスが引き続き有効なため、無効状態のスタイルが正しく適用されるか確認する。`:not([aria-disabled='true']):hover`パターンを使用。
 - **バックエンド正規化の一貫性** `[新観点 from PR#555]` - バックエンドで正規化するフィールド（trim等）はフロントエンドのビルダーでも同じ正規化を適用し、保存前後の一貫性を確保する。
 - **テストバリエーション網羅** `[新観点 from PR#555]` - 新機能で複数バリエーション（digits/keyword等）がある場合、片方のみ深いテストで他方が浅いままだと回帰リスクがある。全バリエーションに同等のテストカバレッジを確保する。
+- **async callback の未処理 Promise 拒否** `[新観点 from PR#571]` — 同期関数（BroadcastChannelのonmessage等）にasync callbackを渡す場合、内部のawaitが失敗した際の未処理Promise拒否を防ぐtry-catchがあるかチェックする。特にrouter.push等の失敗しうる非同期操作。
+- **フォーム入力コンポーネントの aria-invalid 自動導出** `[新観点 from PR#571]` — errorMessage propがある入力コンポーネントでaria-invalidが自動連動しているかチェックする。呼び出し側の設定漏れを防ぐため、コンポーネント側でerrorMessageの有無からaria-invalidを自動導出すべき。
 - **テンプレート表示分岐の隙間状態** `[新観点 from PR#571]` - 非同期状態フラグ（isReady, isRestoring, isParsing等）の全組み合わせで意図しないフォールスルーがないか確認する。v-if/v-else-if/v-else チェーンで初期化中の「隙間」状態が漏れると誤表示が発生する。条件を網羅的に列挙し、全状態パターンで正しい分岐に入ることを確認する。
