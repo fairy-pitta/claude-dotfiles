@@ -25,6 +25,7 @@
 - **invalidateQueries 後の重複 refetch** `[新観点 from PR#437]` — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
 - **Promise.allSettled + AbortSignal チェック** `[新観点 from PR#437]` — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
 - **フォールバックデータソースのローディング状態反映** `[新観点 from PR#472]` — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
+- **keepPreviousData適用範囲** `[新観点 from PR#539]` — keepPreviousDataはリスト系クエリ（一覧取得）にのみ適用する。詳細系クエリ（ID指定の単一取得）に適用すると、パラメータ切替時に別エンティティの古いデータが表示されるリスクがある
 
 ### Security（セキュリティ）
 

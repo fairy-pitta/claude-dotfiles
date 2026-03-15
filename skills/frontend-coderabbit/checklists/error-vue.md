@@ -64,4 +64,5 @@
 - **テストバリエーション網羅** `[新観点 from PR#555]` - 新機能で複数バリエーション（digits/keyword等）がある場合、片方のみ深いテストで他方が浅いままだと回帰リスクがある。全バリエーションに同等のテストカバレッジを確保する。
 - **async callback の未処理 Promise 拒否** `[新観点 from PR#571]` — 同期関数（BroadcastChannelのonmessage等）にasync callbackを渡す場合、内部のawaitが失敗した際の未処理Promise拒否を防ぐtry-catchがあるかチェックする。特にrouter.push等の失敗しうる非同期操作。
 - **フォーム入力コンポーネントの aria-invalid 自動導出** `[新観点 from PR#571]` — errorMessage propがある入力コンポーネントでaria-invalidが自動連動しているかチェックする。呼び出し側の設定漏れを防ぐため、コンポーネント側でerrorMessageの有無からaria-invalidを自動導出すべき。
+- **PageSkeleton show-title明示指定** `[新観点 from PR#539]` — PageSkeleton使用時に `:show-title` を省略しない。ページに既存タイトルがある場合は `:show-title="false"` を明示し、二重表示を防止する。
 - **テンプレート表示分岐の隙間状態** `[新観点 from PR#571]` - 非同期状態フラグ（isReady, isRestoring, isParsing等）の全組み合わせで意図しないフォールスルーがないか確認する。v-if/v-else-if/v-else チェーンで初期化中の「隙間」状態が漏れると誤表示が発生する。条件を網羅的に列挙し、全状態パターンで正しい分岐に入ることを確認する。
