@@ -107,3 +107,6 @@
 - **querySelector null ガード** `[新観点 from PR#594]` — querySelector の結果が null になるケースで state がリセットされるか確認。DOM未描画時に stale value が残るバグを防ぐ。else ブランチでデフォルト値に戻す。
 - **テーブルスペーサー行の colspan** `[新観点 from PR#594]` — 仮想スクロールのスペーサー `<tr>` で `<td>` が1個だけの場合、colspan でヘッダー/データ行のセル数と一致させているか確認。HTML テーブル仕様違反によるレイアウト崩れを防ぐ。
 - **クリック要素のキーボード操作** `[新観点 from PR#594]` — `@click` を持つ非インタラクティブ要素（th, div等）に `tabindex="0"` + `@keydown.enter` + `@keydown.space.prevent` が付いているか確認。a11y要件。
+- **hover/click 混在のインタラクション設計** `[新観点 from PR#606]` — クリックで開いた状態とモバイルモードを混同する設計は、デスクトップで hover が永久に無効化されるバグにつながる。状態フラグの意味（「何を表すか」）を明確にし、close 時にリセットすること。
+- **position: fixed 要素のスクロール追従** `[新観点 from PR#606]` — Teleport + fixed ポジショニングでは、表示後のビューポート変化に対応する scroll/resize イベントリスナーが必要。tooltip/popover 実装時は必ずスクロール・リサイズ追従を確認すること。
+- **インタラクティブ要素のセマンティクス** `[新観点 from PR#606]` — `<span tabindex="0">` ではなくネイティブ `<button>` を使う。WAI-ARIA tooltip パターンでは `aria-expanded` は不使用。アイコンのみのトリガーには `aria-label` を必ず付与すること。
