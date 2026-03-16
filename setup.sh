@@ -46,7 +46,7 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
   if [ -L "$target" ] || [ -e "$target" ]; then
     rm -rf "$target"
   fi
-  ln -s "../claude-dotfiles/skills/$skill_name" "$target"
+  ln -s "$SCRIPT_DIR/skills/$skill_name" "$target"
   echo "  - $skill_name -> symlinked"
 done
 
@@ -58,7 +58,7 @@ for skill_file in "$SCRIPT_DIR/skills/"*.md; do
   if [ -L "$target" ] || [ -e "$target" ]; then
     rm -rf "$target"
   fi
-  ln -s "../claude-dotfiles/skills/$skill_basename" "$target"
+  ln -s "$SCRIPT_DIR/skills/$skill_basename" "$target"
   echo "  - $skill_basename -> symlinked"
 done
 
