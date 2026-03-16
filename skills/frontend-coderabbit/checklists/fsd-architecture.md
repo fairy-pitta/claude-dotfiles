@@ -82,3 +82,4 @@
 - **FSD内部パス直接import検出** — shared/entities/features のスライス内部パスを直接importしていないか確認する。FSDの公開API原則に反しリファクタリング耐性が低下する。index.ts経由のimportに修正する。
 - **pages層エラー正規化禁止** `[新観点 from PR#571]` — pages層で `normalizeAxiosError` を直接使い、生レスポンス構造 `details.error` に依存していないかチェック。FSD エラー4層パイプライン違反になる。entities層に `mapBackendError` を配置すること。
 - **flex item 内の text-overflow: ellipsis** `[新観点 from PR#606]` — flex コンテナ内の要素に省略表示を適用する場合、`min-width: 0` が必須。flex item の min-width デフォルト値 `auto` により縮小できず ellipsis が効かない。
+- **PR description と実装の整合性** `[新観点 from PR#519]` — PR説明に「置換」「削除」と書かれている場合、元の要素が本当に除去されているか確認する。テンプレート内のアクションボタン一覧とスクリプトのアクション分岐が一致しているか。
