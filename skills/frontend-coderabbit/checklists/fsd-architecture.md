@@ -16,6 +16,7 @@
 - [ ] **依存方向** — `app → pages → features → entities → shared`（上位→下位のみ）。pages層はfeatures内部（`model/`, `lib/`等）を直接参照禁止
 - [ ] **FSDエイリアス必須** — 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用。2階層以上の相対パス（`../../`）禁止
 - [ ] **import順序** — 外部ライブラリ → `@shared/` → `@entities/` → `@features/` → `@pages/` → `@app/` → 相対パスの順
+- [ ] **barrel export混在チェック** `[新観点 from PR#539]` — 同一ファイル内で `@shared/ui` 等の barrel export と `.vue` ファイル直接参照が混在していないか確認。barrel export に既に含まれるコンポーネントの直接参照は公開境界を崩す。barrel export 経由に統一すること
 
 ### Unused Code Detection
 

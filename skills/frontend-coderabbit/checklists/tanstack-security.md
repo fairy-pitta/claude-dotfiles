@@ -25,9 +25,10 @@
 - **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
 - **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
 - **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
-- **invalidateQueries 後の重複 refetch** — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
-- **Promise.allSettled + AbortSignal チェック** — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
-- **フォールバックデータソースのローディング状態反映** — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
+- **invalidateQueries 後の重複 refetch** `[新観点 from PR#437]` — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
+- **Promise.allSettled + AbortSignal チェック** `[新観点 from PR#437]` — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
+- **フォールバックデータソースのローディング状態反映** `[新観点 from PR#472]` — context依存でデータソースが切り替わるcomposableで、フォールバック先のローディング状態も統合して返却しているか確認する
+- **keepPreviousData適用範囲** `[新観点 from PR#539]` — keepPreviousDataはリスト系クエリ（一覧取得）にのみ適用する。詳細系クエリ（ID指定の単一取得）に適用すると、パラメータ切替時に別エンティティの古いデータが表示されるリスクがある
 - **keepPreviousDataの会社/テナント切替時staleデータリスク** `[from PR#539]` — `placeholderData: keepPreviousData`を使用しているクエリで、QueryKeyにcompanyId等のテナント識別子が含まれる場合、切替時に前のテナントのデータが一時表示されるリスクがないか確認する。マスターデータ（テナント非依存）以外でのkeepPreviousData使用は要注意
 - **:key再マウントとkeepPreviousDataの無効な組み合わせ** `[from PR#539]` — `:key="$route.path"`等でコンポーネントが再マウントされるページでは、コンポーネント内の`keepPreviousData`は無効（再マウント時にクエリインスタンスが再作成されるため前のデータが参照されない）。無意味なkeepPreviousDataが残っていないか確認する
 - **APIレスポンス必須フィールド検証** — 後続処理の前提となるレスポンスフィールド（ID等）の存在チェックが抜けていないか確認する。サーバーが予期しないレスポンスを返した場合に状態不整合やサイレント障害の原因になる。== null チェックでガードする。
