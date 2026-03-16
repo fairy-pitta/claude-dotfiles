@@ -62,3 +62,16 @@
 - **Result型モック戻り値の型パラメータ整合** `[新観点 from PR#601]` — `Result[list[T]]` の成功時モック戻り値が `(None, None)` になっていないか確認。型パラメータが `list` なら `([], None)`、エンティティなら `(entity, None)` を返すべき。`(None, None)` は Result 契約違反の温床。
 - **Mockデフォルトtruthy依存の排除** `[新観点 from PR#601]` — boolean戻り値のMockメソッドが明示設定されずにデフォルトtruthyで偶然テストが通っていないか確認。成功パスでも `return_value = True` を明示設定する。
 - **トランザクション失敗パスのset_rollback検証** `[新観点 from PR#601]` — トランザクション内の失敗パステストで `set_rollback(True)` の呼び出し検証が漏れていないか確認。同種のcreate/deleteテスト間で検証項目の一貫性を保つ。
+- **エラー型の明示検証** `[新観点 from PR#601]` — エラー系テストでは `isinstance(error, ValidationError)` 等で具体的な型も検証する。None/not Noneだけでは型の退行を検出できない。テスト追加時に必ず型検証を含める。
+- **副作用の不在検証** `[新観点 from PR#601]` — エラー系テストでは `assert_not_called()` で副作用が発生しないことも検証する。他のエラー系テストとの一貫性を保つ。
+- **入力バリデーション分岐の網羅** `[新観点 from PR#601]` — UseCaseの入力バリデーション（`user_id <= 0` 等）の全分岐をテストでカバーしているか確認する。
+- **Result型サービスのerror分岐カバー** `[新観点 from PR#601]` — Result型を返すサービスメソッド（`can_access()` 等）のerror分岐を全てテストでカバーする。
+- **呼ばれない処理の明示検証** `[新観点 from PR#601]` — 条件分岐で呼ばれないはずの処理が呼ばれないことを `assert_not_called()` で明示的に検証する。
+- **モックのspec_set指定** `[新観点 from PR#601]` — モックには `spec_set=True` を指定してタイポによる偽陽性を防ぐ。
+- **フィクスチャの不要依存削除** `[新観点 from PR#601]` — フィクスチャは実際に使用する依存のみ宣言する。未使用パラメータは削除する。
+- **set_rollbackのrollback検証** `[新観点 from PR#601]` — `transaction.set_rollback(True)` を呼ぶ実装のエラー系テストでは必ず `mock_transaction.set_rollback.assert_called_with(True)` を検証する。
+- **タイムゾーン対応datetime** `[新観点 from PR#601]` — テストデータでも `datetime.now(timezone.utc)` を使用する。`datetime.now()` はタイムゾーン非対応。
+- **例外メッセージの検証** `[新観点 from PR#601]` — `pytest.raises()` では `match` パラメータまたは `exc_info.value` でメッセージ内容も検証する。
+- **エラーメッセージの定数参照** `[新観点 from PR#601]` — テストのエラーメッセージ検証はハードコードせず、エラー定数（UserErrors, ValidationErrors等）を参照する。
+- **同型テストのparametrize統合** `[新観点 from PR#601]` — 同じAssertパターンを持つ同型テストは `pytest.mark.parametrize` で統合する。
+- **テスト内重複コードの抽出** `[新観点 from PR#601]` — テスト内でも3箇所以上の重複はヘルパー関数に抽出する。
