@@ -1,11 +1,19 @@
 ---
 name: review-loop
-description: backend-review / frontend-review の codex 並列レビューを繰り返し、全指摘を解消するまでループ
+description: backend-review / frontend-review の並列レビューを繰り返し、全指摘を解消するまでループ（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # Review Loop
 
-backend / frontend のチェックリストを codex review で並列実行し、指摘箇所を全て解消するまでループするスキル。
+backend / frontend のチェックリストで並列レビューし、指摘箇所を全て解消するまでループするスキル。
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ## Process
 
@@ -21,9 +29,36 @@ git diff --name-only origin/dev...HEAD
 | `frontend/` のみ | frontend 5並列 |
 | 両方             | 両方 最大10並列 |
 
-### 1. codex review 並列実行
+### 1. 並列レビュー実行
 
-チェックリストを codex review に渡して Bash バックグラウンドジョブで同時実行する。
+### 1-A: Claude Code Agent（デフォルト）
+
+**最大10個の Agent tool を単一メッセージで並列起動する。**
+
+各 Agent に以下を渡す:
+
+```
+description: "review: <be/fe>-<category>"
+prompt: |
+  あなたはコードレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. チェックリストファイルを読む: ~/.claude/skills/<backend-coderabbit or frontend-coderabbit>/checklists/<category>.md
+  3. コード例ファイルを読む: ~/.claude/skills/<backend-coderabbit or frontend-coderabbit>/references/code-examples.md
+  4. 以下のコマンドで差分を取得:
+     git diff origin/dev...HEAD -- <backend/ or frontend/>
+  5. チェックリストに沿って差分をレビューする
+
+  出力フォーマット:
+  | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |
+  各 finding: category + severity + title + explanation + suggested diff.
+  指摘なしの場合: "No findings."
+```
+
+全 Agent を **同時に起動** すること。
+
+### 1-B: codex CLI（--codex 指定時）
 
 ```bash
 SKILLS_DIR="$HOME/.claude/skills"
@@ -113,7 +148,7 @@ rm -rf "$RESULTS_DIR"
 
 ### 4. 再レビュー
 
-修正完了後、再度同じ codex review 並列実行を行う。
+修正完了後、再度同じ並列レビュー実行を行う。
 
 ### 5. ループ判定
 
@@ -166,7 +201,7 @@ rm -rf "$RESULTS_DIR"
 
 ## Critical Constraints
 
-- **codexレビューは必ず並列実行**（直列禁止）
+- **レビューは必ず並列実行**（直列禁止）
 - 修正はレビュー指摘に基づくこと
 - 新しい問題を導入しないよう注意
 - 最大20回のループで終了

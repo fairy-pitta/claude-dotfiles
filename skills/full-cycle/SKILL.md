@@ -1,11 +1,11 @@
 ---
 name: full-cycle
-description: End-to-end implementation cycle that chains plan creation, execution, self-review, fixes, commit, push, and PR creation.
+description: End-to-end implementation cycle that chains plan creation, execution, self-review, fixes, commit, push, and PR creation.（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # Full Cycle
 
-End-to-end implementation cycle: Plan creation (with Codex validation) -> Plan execution -> Self-review -> Fix -> Commit -> Push -> PR creation.
+End-to-end implementation cycle: Plan creation (with validation) -> Plan execution -> Self-review -> Fix -> Commit -> Push -> PR creation.
 
 Context: $ARGUMENTS
 
@@ -13,7 +13,15 @@ Context: $ARGUMENTS
 
 This skill orchestrates the complete development cycle from planning through to PR creation. It chains existing skills together so you don't have to invoke them manually.
 
-**Announce at start:** "full-cycle を開始します。Plan作成(Codex検証) -> Plan実行 -> Review -> Fix -> Commit -> Push -> PR作成 を自動で回します。"
+**Announce at start:** "full-cycle を開始します。Plan作成(レビュー検証) -> Plan実行 -> Review -> Fix -> Commit -> Push -> PR作成 を自動で回します。"
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ## Context Management
 
@@ -46,12 +54,36 @@ Write a detailed implementation plan covering:
 
 Save the plan to `.claude/plan.md` in the project root.
 
-### 0-3. Codex review loop
+### 0-3. プランレビューループ
 
-Submit the plan to Codex for review. Loop until Codex approves.
+プランをレビューに送り、承認されるまでループする。
+
+#### 0-3-A: Claude Code Agent（デフォルト）
+
+Agent tool で起動する:
+
+```
+description: "plan review agent"
+prompt: |
+  あなたはプランレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. `.claude/plan.md` を読む
+  3. 以下の基準で評価する:
+     - Architectural correctness
+     - Completeness
+     - Step ordering
+     - Testing coverage
+     - Risk areas
+
+  プランが良ければ: "LGTM" とだけ返す
+  問題があれば: 具体的な改善提案を簡潔にリストする
+```
+
+#### 0-3-B: codex CLI（--codex 指定時）
 
 ```bash
-# Build the prompt with project context
 CLAUDE_MD="$(pwd)/CLAUDE.md"
 PLAN_FILE=".claude/plan.md"
 
@@ -79,15 +111,15 @@ rm -f "$PROMPT"
 
 **Parse the output:**
 
-- If Codex responds with `LGTM` (or no actionable issues): proceed to Phase 1
-- If Codex has findings: revise the plan to address them, then re-submit
-- **Max 3 rounds.** If Codex still has issues after 3 rounds, show the remaining concerns to the user and ask whether to proceed anyway
+- If the review responds with `LGTM` (or no actionable issues): proceed to Phase 1
+- If there are findings: revise the plan to address them, then re-submit
+- **Max 3 rounds.** If issues remain after 3 rounds, show the remaining concerns to the user and ask whether to proceed anyway
 
 ### 0-4. Plan approved
 
 ```
 === Phase 0: Plan Approved ===
-Codex review rounds: <N>
+Review rounds: <N>
 Plan: .claude/plan.md
 ```
 

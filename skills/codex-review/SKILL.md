@@ -1,13 +1,21 @@
 ---
 name: codex-review
-description: Codex CLIを使ってコードレビューを非インタラクティブに実行するスキル。coderabbit-review または sora-review スタイルの指示を codex review に渡してレビューを行う。
+description: コードレビューを非インタラクティブに実行するスキル。coderabbit-review または sora-review スタイルの指示でレビューを行う。（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # Codex Review
 
-Codex CLI (`codex review`) を非インタラクティブに呼び出し、プロジェクトのレビュー規約に沿ったコードレビューを実行する。
+プロジェクトのレビュー規約に沿ったコードレビューを実行する。
 
-**Announce at start:** "codex-review スキルで Codex CLI によるコードレビューを実行します"
+**Announce at start:** "codex-review スキルでコードレビューを実行します"
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI (`codex review`) を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ## Review Style Selection
 
@@ -15,7 +23,28 @@ Codex CLI (`codex review`) を非インタラクティブに呼び出し、プ�
 - **coderabbit**: フォーマル・体系的・包括的（デフォルト）
 - **sora**: カジュアル・直接的・会話的
 
-## Step 1: Build Prompt File
+## Step 1-A: Claude Code Agent（デフォルト）
+
+Agent tool で起動する:
+
+```
+description: "code review agent"
+prompt: |
+  あなたはコードレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. レビュースタイルファイルを読む: ~/.claude/skills/<coderabbit-review or sora-review>/SKILL.md
+  3. 以下のコマンドで差分を取得:
+     git diff origin/dev...HEAD
+  4. レビュースタイルに従ってレビューを実行する
+
+  レビュー結果を返す。
+```
+
+→ Step 3 へ
+
+## Step 1-B: codex CLI（--codex 指定時）
 
 レビュー指示をファイルに書き出す:
 
@@ -39,7 +68,7 @@ echo "" >> "$PROMPT_FILE"
 cat "$SKILL_FILE" >> "$PROMPT_FILE"
 ```
 
-## Step 2: Run Codex Review
+## Step 2: Run Codex Review（--codex 指定時のみ）
 
 **重要:** `codex review` では `--base`/`--uncommitted`/`--commit` と `[PROMPT]`（stdin `-` 含む）は排他。
 カスタムプロンプトを使う場合は diff をプロンプトに含め、`codex review -` で実行する。
