@@ -38,16 +38,28 @@ echo "📊 Copying statusline script..."
 cp "$SCRIPT_DIR/scripts/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
 chmod +x "$CLAUDE_DIR/statusline-command.sh"
 
-# Copy custom skills
-echo "🎯 Copying custom skills..."
+# Symlink custom skills (auto-syncs when repo is updated)
+echo "🎯 Symlinking custom skills..."
 for skill_dir in "$SCRIPT_DIR/skills"/*/; do
   skill_name="$(basename "$skill_dir")"
-  cp -r "$skill_dir" "$CLAUDE_DIR/skills/$skill_name"
+  target="$CLAUDE_DIR/skills/$skill_name"
+  if [ -L "$target" ] || [ -e "$target" ]; then
+    rm -rf "$target"
+  fi
+  ln -s "../claude-dotfiles/skills/$skill_name" "$target"
+  echo "  - $skill_name -> symlinked"
 done
 
-# Copy standalone skill files (*.md directly in skills/)
+# Symlink standalone skill files (*.md directly in skills/)
 for skill_file in "$SCRIPT_DIR/skills/"*.md; do
-  [ -f "$skill_file" ] && cp "$skill_file" "$CLAUDE_DIR/skills/"
+  [ -f "$skill_file" ] || continue
+  skill_basename="$(basename "$skill_file")"
+  target="$CLAUDE_DIR/skills/$skill_basename"
+  if [ -L "$target" ] || [ -e "$target" ]; then
+    rm -rf "$target"
+  fi
+  ln -s "../claude-dotfiles/skills/$skill_basename" "$target"
+  echo "  - $skill_basename -> symlinked"
 done
 
 # Clone Superpowers (if not already present)
@@ -83,7 +95,7 @@ echo "✅ Setup complete!"
 echo ""
 echo "Installed:"
 echo "  - Custom commands (9 commands)"
-echo "  - Custom skills (dotfiles/skills/)"
+echo "  - Custom skills (symlinked from dotfiles/skills/)"
 echo "  - Hook scripts (auto-format, deny-check)"
 echo "  - Status line (3-line rate limit display)"
 echo "  - Superpowers skills (14 skills)"
