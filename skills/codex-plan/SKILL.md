@@ -1,15 +1,23 @@
 ---
 name: codex-plan
-description: Plan作成 → Codexレビューループ（LGTM まで） → ユーザー承認 → Codex実装の一連フロー。プラン検証と実装を Codex に委譲する。
+description: Plan作成 → レビューループ（LGTM まで） → ユーザー承認 → 実装の一連フロー。プラン検証と実装をサブエージェントに委譲する。（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # Codex Plan
 
-Plan Mode でプランを作成し、Codex CLI (`codex review`) でレビュー・検証を繰り返してから、ユーザー承認を経て Codex CLI に実装を委譲するスキル。
+Plan Mode でプランを作成し、レビュー・検証を繰り返してから、ユーザー承認を経て実装を委譲するスキル。
 
 Context: $ARGUMENTS
 
-**Announce at start:** "codex-plan を開始します。Plan作成 → Codexレビューループ → ユーザー承認 → Codex実装 の流れで進めます。"
+**Announce at start:** "codex-plan を開始します。Plan作成 → レビューループ → ユーザー承認 → 実装 の流れで進めます。"
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ---
 
@@ -79,9 +87,35 @@ Plan Mode に入り、Phase 1 の調査結果をもとに詳細なプランを�
 
 ---
 
-## Phase 3: Codex レビューループ
+## Phase 3: プランレビューループ
 
-### 3-1. レビュー用プロンプトの構築と送信
+### 3-1. レビュー実行
+
+#### 3-1-A: Claude Code Agent（デフォルト）
+
+Agent tool で起動する:
+
+```
+description: "plan review agent"
+prompt: |
+  あなたはプランレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. `.claude/plan.md` を読む
+  3. 以下の基準で評価する:
+     - Architectural correctness: プロジェクトの既存パターン・規約に従っているか
+     - Completeness: 不足しているステップや未考慮のエッジケースがないか
+     - Step ordering: ステップ間の依存関係が守られているか
+     - Testing coverage: 適切なテストが計画されているか
+     - Risk assessment: 破壊的変更・マイグレーション問題が特定されているか
+     - Scope appropriateness: 過剰/不足なく適切なスコープか
+
+  プランが良ければ: "LGTM" とだけ返す
+  問題があれば: 具体的な改善提案を簡潔にリストする
+```
+
+#### 3-1-B: codex CLI（--codex 指定時）
 
 ```bash
 CLAUDE_MD="$(pwd)/CLAUDE.md"
@@ -117,7 +151,7 @@ rm -f "$PROMPT"
 
 ### 3-2. 結果の解析
 
-Codex の出力を解析する:
+レビューの出力を解析する:
 
 - **LGTM（またはアクショナブルな指摘なし）**: Phase 4 へ進む
 - **指摘あり**: 3-3 のプラン修正エージェントへ
@@ -131,8 +165,8 @@ description: "plan revision agent"
 prompt: |
   あなたはプラン修正のサブエージェントです。
 
-  ## Codex からの指摘:
-  <Codex の出力をここに貼る>
+  ## レビューからの指摘:
+  <レビューの出力をここに貼る>
 
   ## タスク:
   1. `.claude/plan.md` を Read tool で読む
@@ -156,7 +190,7 @@ prompt: |
 各ラウンド後に表示:
 
 ```
-=== Codex Plan Review: Round <N>/<5> ===
+=== Plan Review: Round <N>/<5> ===
 Status: LGTM / <N>件の指摘あり
 修正内容: <修正のサマリー>（修正した場合）
 ```
@@ -167,13 +201,13 @@ Status: LGTM / <N>件の指摘あり
 
 ## Phase 4: ユーザー承認
 
-### 4-1. Codex 承認済みプランの提示
+### 4-1. 承認済みプランの提示
 
 Plan Mode を終了し、`.claude/plan.md` の内容を全文表示する:
 
 ```
-=== Codex-Approved Plan ===
-Codex review rounds: <N>
+=== Approved Plan ===
+Review rounds: <N>
 
 <plan.md の全文>
 ```
@@ -183,14 +217,43 @@ Codex review rounds: <N>
 **ユーザーが承認するまで一切コードを変更しない。**
 
 - **OK / 承認 / LGTM**: Phase 5 へ
-- **修正要望あり**: プランを修正 → Phase 3 に戻って Codex 再レビュー（ラウンドカウントはリセット）
+- **修正要望あり**: プランを修正 → Phase 3 に戻って再レビュー（ラウンドカウントはリセット）
 - **却下 / キャンセル**: `.claude/plan.md` を削除してスキル終了
 
 ---
 
-## Phase 5: Codex に実装を委譲
+## Phase 5: 実装を委譲
 
-### 5-1. 実装用プロンプトの構築と実行
+### 5-1. 実装実行
+
+#### 5-1-A: Claude Code Agent（デフォルト）
+
+Agent tool で実装エージェントを起動する:
+
+```
+description: "implement: execute approved plan"
+prompt: |
+  あなたは実装のサブエージェントです。承認済みプランを実装します。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. `.claude/plan.md` を読む
+  3. plan に従い、Edit tool / Write tool でコードを修正・作成する
+
+  Rules:
+  1. Implement all steps in the order specified
+  2. Follow the project conventions strictly
+  3. Add all planned tests
+  4. Run tests after implementation to verify correctness
+  5. Do not deviate from the plan
+  6. Do not add extra features, refactoring, or improvements beyond the plan
+
+  結果レポート:
+  - 修正/作成ファイル一覧
+  - テスト結果: PASS / FAIL
+```
+
+#### 5-1-B: codex CLI（--codex 指定時）
 
 ```bash
 CLAUDE_MD="$(pwd)/CLAUDE.md"
@@ -220,13 +283,13 @@ rm -f "$PROMPT"
 
 ### 5-2. 実装結果の検証（並列エージェント）
 
-Codex の実装完了後、2つのエージェントを **同一メッセージで並列起動** する:
+実装完了後、2つのエージェントを **同一メッセージで並列起動** する:
 
 **変更内容の確認エージェント:**
 ```
 description: "implementation diff analyzer"
 prompt: |
-  Codex が実装を完了しました。変更内容を確認してください:
+  実装が完了しました。変更内容を確認してください:
 
   1. `git status` で変更ファイル一覧を取得
   2. `git diff` で全差分を確認
@@ -247,7 +310,7 @@ prompt: |
 ```
 description: "test runner agent"
 prompt: |
-  Codex の実装が完了しました。プロジェクトのテストを実行してください:
+  実装が完了しました。プロジェクトのテストを実行してください:
 
   1. プロジェクトの CLAUDE.md を読んでテストコマンドを確認
   2. 変更ファイルのパスから backend/frontend を判定
@@ -270,7 +333,7 @@ prompt: |
 ```
 === Codex Plan: Implementation Complete ===
 
-Codex review rounds: <N>
+Review rounds: <N>
 Files changed: <N>
 
 ## Implementation Check
@@ -296,11 +359,11 @@ rm -f .claude/plan.md
 ## Critical Constraints
 
 - **Plan Mode 中はコードを変更しない** — Phase 4 のユーザー承認前に実装を開始しない
-- **Codex レビューは最大 5 ラウンド** — 無限ループ防止
-- **ユーザー承認は必須** — Codex LGTM だけでは実装に進まない
+- **レビューは最大 5 ラウンド** — 無限ループ防止
+- **ユーザー承認は必須** — レビュー LGTM だけでは実装に進まない
 - **コンテキスト管理: 各フェーズ境界で 80% チェック**
-- **実装は Codex に委譲** — Claude Code は実装しない、検証のみ行う
-- **テスト失敗時はユーザーに報告** — 自動修正はしない（Codex の実装結果を尊重し、ユーザー判断を仰ぐ）
+- **実装はサブエージェントに委譲** — メインCCは実装しない、検証のみ行う
+- **テスト失敗時はユーザーに報告** — 自動修正はしない（実装結果を尊重し、ユーザー判断を仰ぐ）
 - **プラン修正はサブエージェントに委譲** — メインコンテキストの消費を最小限に抑える
 
 ---
@@ -308,8 +371,8 @@ rm -f .claude/plan.md
 ## Red Flags - Never Do This
 
 - **ユーザー承認なしで Phase 5 に進まない**
-- **Codex の出力を読まずに「LGTM」と判定しない**
-- **`codex` / `codex review` のプロンプトに CLAUDE.md を含めずに実行しない**
+- **レビューの出力を読まずに「LGTM」と判定しない**
+- **codex 使用時は `codex` / `codex review` のプロンプトに CLAUDE.md を含めずに実行しない**
 - **プラン修正時にコードを変更しない（プランファイルのみ編集）**
 - **テスト未実行で完了報告しない**
 - **検証エージェントの結果を無視しない**

@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: PRをCodeRabbitがApproveするまで定期監視。未解決コメントはサブエージェント+codex cliで自律対応。ユーザー承認不要の自動運転モード。
+description: PRをCodeRabbitがApproveするまで定期監視。未解決コメントはサブエージェントで自律対応。ユーザー承認不要の自動運転モード。（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # PR Watch
@@ -130,6 +130,8 @@ gh api graphql \
 
 **CCはコードを読まず、修正もしない。** 全てをサブエージェントに委託し、結果サマリーだけ受け取る。
 
+**エンジン選択:** `$ARGUMENTS` に `--codex` が含まれる場合は codex CLI、それ以外は Agent が直接実装する。
+
 Agent tool で起動:
 
 ```
@@ -161,24 +163,11 @@ prompt: |
 
   ### 3. 対応実行
 
-  **妥当なコメント → codex cli で修正:**
+  **妥当なコメント → 修正:**
   1. 修正計画を `.claude/pr-fix-plan.md` に書き出す
-  2. codex cli で実装:
-
-  ```bash
-  CLAUDE_MD="$(pwd)/CLAUDE.md"
-  PROMPT=$(mktemp /tmp/pr-watch-fix.XXXXXX)
-  echo "# Project Rules (MUST follow)" > "$PROMPT"
-  [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
-  echo -e "\n---\n# Fix Plan\n" >> "$PROMPT"
-  cat .claude/pr-fix-plan.md >> "$PROMPT"
-  echo -e "\n---\nImplement the fix plan. Follow project conventions. Run tests." >> "$PROMPT"
-  codex - < "$PROMPT"
-  rm -f "$PROMPT"
-  ```
-
+  2. plan に従い、Edit tool / Write tool でコードを直接修正する
   3. テスト実行（pytest / type-check / lint / test:unit）
-  4. テスト失敗 → 直接修正して再テスト（最大3回）
+  4. テスト失敗 → 修正して再テスト（最大3回）
   5. `/commit-push` でコミット＆プッシュ
   6. 各 comment_id に「Fixed in {commit_hash}」を返信
 
@@ -208,6 +197,26 @@ prompt: |
   - 返信: N件（妥当でない旨）
   - 観点追加: N件
   - テスト: PASS / FAIL
+```
+
+**--codex 指定時のサブエージェント:** 上記の「### 3. 対応実行」の修正部分を以下に差し替える:
+
+```
+  **妥当なコメント → codex cli で修正:**
+  1. 修正計画を `.claude/pr-fix-plan.md` に書き出す
+  2. codex cli で実装:
+
+  ```bash
+  CLAUDE_MD="$(pwd)/CLAUDE.md"
+  PROMPT=$(mktemp /tmp/pr-watch-fix.XXXXXX)
+  echo "# Project Rules (MUST follow)" > "$PROMPT"
+  [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+  echo -e "\n---\n# Fix Plan\n" >> "$PROMPT"
+  cat .claude/pr-fix-plan.md >> "$PROMPT"
+  echo -e "\n---\nImplement the fix plan. Follow project conventions. Run tests." >> "$PROMPT"
+  codex - < "$PROMPT"
+  rm -f "$PROMPT"
+  ```
 ```
 
 サブエージェントの結果サマリーを確認後、`@coderabbitai full review` をPRにコメント:
@@ -288,7 +297,7 @@ echo "PR #{PR_NUMBER} を閉じ、PR #${NEW_PR_NUMBER} を再作成しました�
 ## Red Flags - Never Do This
 
 - **ユーザーに承認を求めない** — 自律運転モード
-- **CCが直接コードを読まない・修正しない** — サブエージェント + codex cli に委託
+- **CCが直接コードを読まない・修正しない** — サブエージェントに委託（デフォルト: Agent直接実装、--codex: codex cli）
 - **Approve済みなのにループを続けない** — 即停止
 - **ステータステーブルを省略しない** — 毎ループ必ず出力する
 - **テストが通らないままコミットしない**

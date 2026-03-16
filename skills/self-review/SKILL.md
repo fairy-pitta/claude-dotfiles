@@ -1,27 +1,35 @@
 ---
 name: self-review
-description: 全工程をサブエージェントに委託する完全オーケストレーター。REVIEW(codex並列)→TRIAGE(エージェント)→CODEX-FIX(エージェント)→COMMIT。CCはエージェント起動と結果サマリーの確認のみ。
+description: 全工程をサブエージェントに委託する完全オーケストレーター。REVIEW(並列)→TRIAGE(エージェント)→FIX(エージェント)→COMMIT。CCはエージェント起動と結果サマリーの確認のみ。
 ---
 
 # Self Review Orchestrator
 
-**CCは純粋なオーケストレーター。** レビュー・妥当性判断・実装の全てをサブエージェント/codexに委託し、CCはエージェントの起動と結果サマリーの確認のみ行う。
+**CCは純粋なオーケストレーター。** レビュー・妥当性判断・実装の全てをサブエージェントに委託し、CCはエージェントの起動と結果サマリーの確認のみ行う。
 
 **Announce at start:** "self-review を開始します。全工程エージェント委託で全指摘ゼロを目指します。"
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ---
 
 ## CCの役割（厳守）
 
 CCがやること:
-- codex review / エージェントを起動する
+- レビューエージェント（または codex review）を起動する
 - **サマリー結果**を読む（詳細はエージェント内で完結）
 - ループ継続/終了を判断する
 - `/commit-push` でコミットする
 
 CCがやらないこと:
 - コードを読む（エージェントがやる）
-- レビューする（codexがやる）
+- レビューする（エージェント/codexがやる）
 - 妥当性を判断する（エージェントがやる）
 - コードを修正する（エージェントがやる）
 
@@ -58,12 +66,62 @@ git diff --name-only origin/dev...HEAD
 
 ---
 
-### PHASE 1: REVIEW（codex並列レビュー）
+### PHASE 1: REVIEW（並列レビュー）
 
-**全レビューを codex review の Bash バックグラウンドジョブで並列実行する。**
-CCはレビューを行わず、結果を待つだけ。
+**全レビューを並列実行する。** CCはレビューを行わず、結果を待つだけ。
 
-#### codex review 並列実行
+**注意:** `HAS_BACKEND=false` の場合は backend レビューを丸ごとスキップ、`HAS_FRONTEND=false` の場合は frontend レビューを丸ごとスキップする。
+
+#### 1-A: Claude Code Agent（デフォルト）
+
+**最大11個の Agent tool を単一メッセージで並列起動する。**
+
+- **Backend（HAS_BACKEND の場合）:** architecture, type-safety, db-performance, test-quality, security-errors の5つ
+- **Frontend（HAS_FRONTEND の場合）:** fsd-architecture, type-state, error-vue, tanstack-security, test-quality の5つ
+- **General（常時）:** 1つ
+
+各チェックリスト Agent:
+
+```
+description: "review: <be/fe>-<category>"
+prompt: |
+  あなたはコードレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. チェックリストファイルを読む: ~/.claude/skills/<backend-coderabbit or frontend-coderabbit>/checklists/<category>.md
+  3. コード例ファイルを読む: ~/.claude/skills/<backend-coderabbit or frontend-coderabbit>/references/code-examples.md
+  4. 以下のコマンドで差分を取得:
+     git diff origin/dev...HEAD -- <backend/ or frontend/>
+  5. チェックリストに沿って差分をレビューする
+
+  出力フォーマット:
+  | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |
+  指摘なしの場合: "No findings."
+```
+
+General Agent:
+
+```
+description: "review: general"
+prompt: |
+  あなたは一般的なコードレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. .claude/plan.md があれば読む
+  3. 以下のコマンドで差分を取得:
+     git diff origin/dev...HEAD
+  4. 全体的な観点（設計整合性、命名、プラン通りの実装か）でレビューする
+
+  出力フォーマット:
+  | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Issue |
+  指摘なしの場合: "No findings."
+```
+
+全 Agent を **同時に起動** すること（単一メッセージに全ての Agent tool call）。
+
+#### 1-B: codex CLI（--codex 指定時）
 
 ```bash
 SKILLS_DIR="$HOME/.claude/skills"
@@ -128,9 +186,10 @@ codex review - < "$GENERAL_PROMPT" > "$RESULTS_DIR/general.txt" 2>&1 &
 wait
 ```
 
-**注意:** `HAS_BACKEND=false` の場合は backend ループを丸ごとスキップ、`HAS_FRONTEND=false` の場合は frontend ループを丸ごとスキップする。
-
 #### 結果収集
+
+**1-A の場合:** 各 Agent の返り値を収集する。
+**1-B の場合:**
 
 ```bash
 echo "=== Review Results ==="
@@ -230,13 +289,67 @@ triage エージェントの結果をテーブルで表示する（数字だけ�
 
 ---
 
-### PHASE 3: CODEX-FIX（plan + codex cli で実装）
+### PHASE 3: FIX（plan + 実装）
 
-**CCは実装しない。codex-fix エージェントに plan 作成と実装を委託する。**
+**CCは実装しない。fix エージェントに plan 作成と実装を委託する。**
 
-#### 3-1. codex-fix エージェント起動
+#### 3-1. fix エージェント起動
 
 Agent tool で起動する。**triage エージェントが返した「妥当な指摘」セクションをそのまま渡す。**
+
+**USE_CODEX の場合は codex cli で実装、それ以外は Agent が直接実装する。**
+
+##### 3-1-A: Claude Code Agent（デフォルト）
+
+```
+description: "fix: plan and implement review findings"
+prompt: |
+  あなたはコード修正のサブエージェントです。
+  レビュー指摘を受けて、plan を作成し、直接実装します。
+
+  ## 妥当な指摘一覧
+  <triage エージェントの「妥当な指摘」セクションをここに貼る>
+
+  ## タスク
+
+  ### Step 1: Plan 作成
+  1. プロジェクトの CLAUDE.md を読む
+  2. 各指摘の対象ファイルを Read tool で読む
+  3. 修正計画を `.claude/self-review-fix-plan.md` に書き出す:
+     - 指摘ごとに: 対象ファイル、修正方針、期待される変更
+     - 修正順序（依存関係を考慮）
+     - テスト追加が必要な場合はその計画も含める
+
+  ### Step 2: 実装
+  plan に従い、Edit tool / Write tool でコードを修正する。
+  Rules:
+  1. Fix all items in the order specified
+  2. Follow project conventions strictly
+  3. Add tests if the plan requires them
+  4. Do not add extra changes beyond the plan
+  5. Do not refactor unrelated code
+
+  ### Step 3: テスト実行
+  Backend: cd backend && pytest
+  Frontend: pnpm -C frontend run type-check && pnpm -C frontend run lint && pnpm -C frontend run test:unit
+
+  テストが失敗した場合: エラー内容を分析し修正（最大3回リトライ）。3回失敗したら失敗レポートを返す。
+
+  ### Step 4: 結果レポート
+  ## Fix Result
+  - **Plan items:** N
+  - **Fixed:** N
+  - **Failed:** N (details if any)
+  - **Test result:** PASS / FAIL
+
+  修正されたファイル一覧:
+  | # | File | What changed |
+  |---|------|-------------|
+
+  `.claude/self-review-fix-plan.md` は削除しないこと（CC側で確認に使う）。
+```
+
+##### 3-1-B: codex CLI（--codex 指定時）
 
 ```
 description: "codex-fix: plan and implement review findings"
@@ -252,14 +365,9 @@ prompt: |
   ### Step 1: Plan 作成
   1. プロジェクトの CLAUDE.md を読む
   2. 各指摘の対象ファイルを Read tool で読む
-  3. 修正計画を `.claude/self-review-fix-plan.md` に書き出す:
-     - 指摘ごとに: 対象ファイル、修正方針、期待される変更
-     - 修正順序（依存関係を考慮）
-     - テスト追加が必要な場合はその計画も含める
+  3. 修正計画を `.claude/self-review-fix-plan.md` に書き出す
 
   ### Step 2: codex cli で実装
-  以下の bash コマンドで codex に実装を委譲する:
-
   ```bash
   CLAUDE_MD="$(pwd)/CLAUDE.md"
   PLAN=".claude/self-review-fix-plan.md"
@@ -285,35 +393,10 @@ prompt: |
   ```
 
   ### Step 3: テスト実行
-  ```bash
-  # Backend
-  cd backend && pytest
-
-  # Frontend
-  pnpm -C frontend run type-check
-  pnpm -C frontend run lint
-  pnpm -C frontend run test:unit
-  ```
-
-  テストが失敗した場合:
-  - エラー内容を分析し、plan を修正して再度 codex cli（最大3回リトライ）
-  - 3回失敗したら失敗レポートを返す
+  テストが失敗した場合: plan を修正して再度 codex cli（最大3回リトライ）
 
   ### Step 4: 結果レポート
-  以下の形式で返す:
-
-  ## Fix Result
-  - **Plan items:** N
-  - **Fixed:** N
-  - **Failed:** N (details if any)
-  - **Test result:** PASS / FAIL
-  - **Codex cli rounds:** N
-
-  修正されたファイル一覧:
-  | # | File | What changed |
-  |---|------|-------------|
-
-  `.claude/self-review-fix-plan.md` は削除しないこと（CC側で確認に使う）。
+  `.claude/self-review-fix-plan.md` は削除しないこと。
 ```
 
 #### 3-2. 結果の確認
@@ -370,7 +453,7 @@ PHASE 2 - TRIAGE: 妥当 <M>件 / 除外 <K>件
 | 1 | path/to/file.py:42 | 🔴 | 説明 | ✅ 妥当 |
 | 2 | path/to/file.ts:10 | 🟡 | 説明 | ❌ 除外: 理由 |
 
-PHASE 3 - CODEX-FIX: Fixed <N>/<M>件 / Test: PASS
+PHASE 3 - FIX: Fixed <N>/<M>件 / Test: PASS
 ```
 
 **PHASE 2 で妥当な指摘が 0件 → ループ終了（完了レポートへ）**
@@ -402,13 +485,13 @@ PHASE 3 - CODEX-FIX: Fixed <N>/<M>件 / Test: PASS
 ## Red Flags - Never Do This
 
 - **CCが直接コードを読まない** — コード確認はエージェント内で完結させる
-- **CCが直接コードを修正しない** — 実装は全て codex-fix エージェント経由で codex cli に委託
+- **CCが直接コードを修正しない** — 実装は全て fix エージェントに委託（デフォルト: Agent直接実装、--codex: codex cli）
 - **CCが妥当性判断しない** — TRIAGE は triage エージェントに委託する
 - **コンテキスト80%超えのまま `/compact` せずに次PHASEへ進まない**
 - **テストが失敗したままコミットしない**
 - **サブエージェントの結果サマリーを確認せずに次へ進まない**
 - **`fix: レビュー対応` 等の抽象的なコミットメッセージを使わない**
-- **codexレビューを直列で実行しない（必ず並列起動）**
-- **codex-fix エージェントにレビューをさせない（codex-fix は修正のみ）**
-- **PHASE 順序を変えない（REVIEW → TRIAGE → CODEX-FIX → COMMIT）**
+- **レビューを直列で実行しない（必ず並列起動）**
+- **fix エージェントにレビューをさせない（fix は修正のみ）**
+- **PHASE 順序を変えない（REVIEW → TRIAGE → FIX → COMMIT）**
 - **エージェントの詳細結果をCCのコンテキストに展開しない** — サマリーだけ確認する

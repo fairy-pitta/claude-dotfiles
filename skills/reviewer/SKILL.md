@@ -1,13 +1,21 @@
 ---
 name: reviewer
-description: PR inline code review — codex並列レビュー後、各指摘をGitHub PRのdiffにインラインコメントとして投稿
+description: PR inline code review — 並列レビュー後、各指摘をGitHub PRのdiffにインラインコメントとして投稿（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # PR Inline Reviewer
 
-codex review で並列レビューし、**各指摘をPRのインラインコメントとして投稿** する。
+並列レビューし、**各指摘をPRのインラインコメントとして投稿** する。
 
-**Announce at start:** "reviewer スキルで並列codexレビューしてインラインコメントを投稿します"
+**Announce at start:** "reviewer スキルで並列レビューしてインラインコメントを投稿します"
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ## Workflow Overview
 
@@ -39,7 +47,7 @@ git diff --name-only origin/<base_branch>...HEAD
 
 If no PR exists, inform the user and stop.
 
-## Step 2: codex review 並列実行
+## Step 2: 並列レビュー実行
 
 **変更ファイルのパスを見てレビュー対象を自動選択する。**
 
@@ -54,7 +62,34 @@ git diff --name-only origin/<base_branch>...HEAD
 | 両方混在 | 両方 最大10並列 |
 | その他（`.github/`, `CLAUDE.md` 等） | 一般的なコード品質チェック |
 
-### codex review 実行
+### 2-A: Claude Code Agent（デフォルト）
+
+**最大10個の Agent tool を単一メッセージで並列起動する。**
+
+各 Agent に以下を渡す:
+
+```
+description: "review: <be/fe>-<category>"
+prompt: |
+  あなたはコードレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. チェックリストファイルを読む: ~/.claude/skills/<backend-coderabbit or frontend-coderabbit>/checklists/<category>.md
+  3. コード例ファイルを読む: ~/.claude/skills/<backend-coderabbit or frontend-coderabbit>/references/code-examples.md
+  4. 以下のコマンドで差分を取得:
+     git diff origin/<base_branch>...HEAD -- <backend/ or frontend/>
+  5. チェックリストに沿って差分をレビューする
+
+  出力フォーマット:
+  | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |
+  各 finding: category + severity + title + explanation + suggested diff.
+  指摘なしの場合: "No findings."
+```
+
+全 Agent を **同時に起動** すること。
+
+### 2-B: codex CLI（--codex 指定時）
 
 ```bash
 SKILLS_DIR="$HOME/.claude/skills"
@@ -228,5 +263,5 @@ Format:
 - **Never use the `line` or `subject_type` API parameters** — use `position` only
 - **Never add fluff or excuses to comments** — keep them direct and concise
 - **Never post on lines outside the diff** — use general PR comments for those
-- **Never run codex reviews sequentially** — always launch all in parallel via bash background jobs
+- **Never run reviews sequentially** — always launch all in parallel (Agent tools or bash background jobs)
 - **Never apply backend observations to frontend files or vice versa** — always match the review checklist to the file's path

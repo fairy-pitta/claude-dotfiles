@@ -1,13 +1,21 @@
 ---
 name: backend-review
-description: Backend code review — Django/DDD/Clean Architectureの観点で5並列codexレビュー
+description: Backend code review — Django/DDD/Clean Architectureの観点で5並列レビュー（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
-# Backend Review（codex 並列レビュー）
+# Backend Review（5並列レビュー）
 
 Django + Clean Architecture/DDDのバックエンドコードを5つのチェックリストで並列レビューする。
 
-**Announce at start:** "backend-review スキルで5並列codexレビューを開始します。"
+**Announce at start:** "backend-review スキルで5並列レビューを開始します。"
+
+## エンジン選択
+
+`$ARGUMENTS` に `--codex` が含まれる場合は codex CLI を使用する。それ以外は **Claude Code Agent（デフォルト）** を使用する。
+
+```
+USE_CODEX = "--codex" in $ARGUMENTS
+```
 
 ## Review Process
 
@@ -19,9 +27,9 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 
 変更ファイルが0件の場合は報告して終了。
 
-### 2. 5並列codexレビュー実行
+### 2. 5並列レビュー実行
 
-5つのチェックリストを codex review に渡して **Bash backgroundジョブで同時実行** する。
+5つのチェックリストで **並列実行** する。
 
 | # | Category | Checklist |
 |---|----------|-----------|
@@ -30,6 +38,36 @@ git diff --name-only origin/dev...HEAD | grep "^backend/"
 | 3 | db-performance | `backend-coderabbit/checklists/db-performance.md` |
 | 4 | test-quality | `backend-coderabbit/checklists/test-quality.md` |
 | 5 | security-errors | `backend-coderabbit/checklists/security-errors.md` |
+
+### 2-A: Claude Code Agent（デフォルト）
+
+**5つの Agent tool を単一メッセージで並列起動する。**
+
+各 Agent に以下を渡す:
+
+```
+description: "backend review: <category>"
+prompt: |
+  あなたはバックエンドコードレビューのサブエージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. チェックリストファイルを読む: ~/.claude/skills/backend-coderabbit/checklists/<category>.md
+  3. コード例ファイルを読む: ~/.claude/skills/backend-coderabbit/references/code-examples.md
+  4. 以下のコマンドで差分を取得:
+     git diff origin/dev...HEAD -- backend/
+  5. チェックリストに沿って差分をレビューする
+
+  出力フォーマット:
+  | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |
+
+  各 finding: category + severity + title + explanation + suggested diff.
+  指摘なしの場合: "No findings."
+```
+
+5つの Agent を **同時に起動** すること（単一メッセージに5つの Agent tool call）。
+
+### 2-B: codex CLI（--codex 指定時）
 
 ```bash
 SKILLS_DIR="$HOME/.claude/skills"
@@ -67,6 +105,9 @@ wait
 
 ### 3. 結果の収集・マージ
 
+**2-A の場合:** 各 Agent の返り値を収集する。
+**2-B の場合:**
+
 ```bash
 for cat in architecture type-safety db-performance test-quality security-errors; do
   echo "=== ${cat} ==="
@@ -103,5 +144,5 @@ rm -rf "$RESULTS_DIR"
 
 - チェックリスト項目をスキップ
 - 修正案なしのフィードバック
-- codexレビューを直列実行（必ず並列）
+- レビューを直列実行（必ず並列）
 - コードdiffなしに修正案を提示
