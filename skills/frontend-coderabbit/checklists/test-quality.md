@@ -39,6 +39,7 @@
 - **wrapper teardown 漏れ検出** — mount した Vue コンポーネントは afterEach で unmount しないと watcher が残存しテスト間で干渉する。delay('infinite') やペンディング状態のテストでは特にコンポーネントの teardown を確実に行う。afterEach での wrapper.unmount() を標準パターンとする。
 - **エラーコード定数参照** — テストコードでもエラーコード文字列はカタログ定数経由で参照する。文字列リテラルが変更された場合にテストが追従できず壊れるリスクがある。
 - **data-testid 命名規約チェック** — テストハーネスの data-testid もCODING_STANDARDSの命名規約（scope-element-action kebab-case）に従う。
+- **テストアサーションの具体性** `[新観点 from PR#590]` — テストアサーションは「何が起きたか」を具体的に検証する。件数チェック（`.length > 0`）だけでは別要因のエラー混入を検出できない。エラーIDやメッセージ内容で `some()` や `find()` を使って具体的な値を検証する。
 
 ### Accounting（会計固有ルール）
 

@@ -32,6 +32,7 @@
 - **keepPreviousDataの会社/テナント切替時staleデータリスク** `[from PR#539]` — `placeholderData: keepPreviousData`を使用しているクエリで、QueryKeyにcompanyId等のテナント識別子が含まれる場合、切替時に前のテナントのデータが一時表示されるリスクがないか確認する。マスターデータ（テナント非依存）以外でのkeepPreviousData使用は要注意
 - **:key再マウントとkeepPreviousDataの無効な組み合わせ** `[from PR#539]` — `:key="$route.path"`等でコンポーネントが再マウントされるページでは、コンポーネント内の`keepPreviousData`は無効（再マウント時にクエリインスタンスが再作成されるため前のデータが参照されない）。無意味なkeepPreviousDataが残っていないか確認する
 - **APIレスポンス必須フィールド検証** — 後続処理の前提となるレスポンスフィールド（ID等）の存在チェックが抜けていないか確認する。サーバーが予期しないレスポンスを返した場合に状態不整合やサイレント障害の原因になる。== null チェックでガードする。
+- **watch + TanStack Query の immediate: true** `[新観点 from PR#590]` — watchでリアクティブな状態変化を監視する場合、初期値も処理対象かどうかを必ず検討し、必要なら `immediate: true` を付ける。特にキャッシュからの復元がありえるTanStack Queryとの組み合わせでは、マウント時に既にエラー状態の可能性がある。
 
 ### Error Handling Pipeline
 
