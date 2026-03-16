@@ -10,8 +10,9 @@
 
 ### Test Quality（テストファイルが変更されている場合）
 
+- **テストデータの独立性（テスト汚染防止）** — テスト間で共有される可変なオブジェクト（dict・array等）がないか。テスト間の暗黙の依存はテスト汚染の原因になる
 - **MSW使用** — APIモックはMSWを使用しているか。`vi.fn()`の直接モック乱用は避ける
-- **テスト期待値の文字列リテラル禁止** `[新観点 from PR#437]` — `rejects.toThrow('エラーメッセージ')` 等の期待値に文字列リテラルを直書きしていないか。定数（`MESSAGES.VALIDATION.X`等）を参照する。定数側の変更に追従できず、テストの意図も不明確になる
+- **テスト期待値の文字列リテラル禁止** — `rejects.toThrow('エラーメッセージ')` 等の期待値に文字列リテラルを直書きしていないか。定数（`MESSAGES.VALIDATION.X`等）を参照する。定数側の変更に追従できず、テストの意図も不明確になる
 - **FormDataを使うmutationテスト** — `FormData`を使うMutationのテストでAxiosアダプターをNode.js httpに設定しているか（`axios.defaults.adapter = 'http'`）（→ `references/code-examples.md`）
 - **型安全なモック** — モック関数に適切な型が付いているか
 - **テストケースの網羅性** — ローディング・エラー・成功状態のそれぞれをカバーしているか
@@ -27,3 +28,30 @@
 - **composable 初期分岐のテストカバレッジ** `[新観点 from PR#571]` — composableの同期的な早期リターンパス（例: インメモリ状態が既に存在する場合のスキップ）がテストされているか確認する。非同期パスだけテストすると同期パスのリグレッションを検出できない。早期リターン条件を明示的にテストする。
 - **テスト前提条件の明示性** `[新観点 from PR#571]` — テストのArrangeセクションで、テスト成立に必要な前提値がbeforeEachの暗黙デフォルトに依存せず明示的に設定されているか確認する。暗黙依存はリファクタリング時に意図せずテストが壊れる原因になる。テスト内で前提条件を明示する。
 - **MSW ハンドラーのインライン定義** `[新観点 from PR#571]` — MSWハンドラーがテストファイル内にインライン定義されていないか確認する。インライン定義はハンドラーの再利用を阻害し重複を生む。ドメイン別ハンドラーファイル（tests/mocks/handlers/）にファクトリ関数として分離する。
+- **テストヘルパー共通化** — `createTestQueryClient()`/`mountWithQuery()`等の共通関数を`tests/helpers/`に集約して使用しているか
+- **data-testidセレクタ優先順位** — role/text > data-testid の優先順位。`data-testid`は`scope-element-action`のkebab-case
+- **テストヘルパー重複検出** — 同一ディレクトリ内のテストファイルで同じヘルパー関数（ファクトリ、スタブ等）が重複定義されていないか確認する。変更漏れやメンテナンス性低下の原因になる。共通ヘルパーファイルに抽出する。
+- **mutation空入力ガード** `[新観点 from PR#571]` — mutation関数に空配列やnull入力が来た場合のガードがあるかチェック。呼び出し元の暗黙の仮定に依存せず、防御的にAPIを叩かないガードを入れること。
+- **テストモック完全リセット** `[新観点 from PR#571]` — afterEach で全モックフィールドがリセットされているかチェック。新しいモックフィールド追加時にリセットリストへの追加漏れが多い。
+- **Vue wrapper unmount** `[新観点 from PR#571]` — module-level ref を使うテストで mount した wrapper を afterEach で unmount しているかチェック。前テストの watcher が afterEach のモック書き換えに反応して次テストの呼び出しを汚染する。
+- **data-testid使用** `[新観点 from PR#571]` — テストでテキストマッチ (`button.text() === "..."`) による要素取得を使っていないかチェック。i18n変更に弱い。`data-testid` を使うこと。
+- **companyIdスコープテスト** `[新観点 from PR#571]` — マルチテナント系ロジックで他テナントのデータに影響するケースのテストがあるかチェック。境界条件テストとして重要。
+- **wrapper teardown 漏れ検出** — mount した Vue コンポーネントは afterEach で unmount しないと watcher が残存しテスト間で干渉する。delay('infinite') やペンディング状態のテストでは特にコンポーネントの teardown を確実に行う。afterEach での wrapper.unmount() を標準パターンとする。
+- **エラーコード定数参照** — テストコードでもエラーコード文字列はカタログ定数経由で参照する。文字列リテラルが変更された場合にテストが追従できず壊れるリスクがある。
+- **data-testid 命名規約チェック** — テストハーネスの data-testid もCODING_STANDARDSの命名規約（scope-element-action kebab-case）に従う。
+
+### Accounting（会計固有ルール）
+
+- **金額をnumberで直接演算禁止** — Amount型関数（`createAmount()`/`addAmounts()`等）経由必須。丸めは明細単位
+- **会計日付のYYYY-MM形式** — `timestamp(UTC)`と`businessDate(YYYY-MM)`を分離。決算月は`YYYY-13`
+- **仕訳系Mutationの楽観更新禁止** — 冪等キー(Idempotency-Key)必須 + UI側submitting ref + API側冪等キーの二重防止
+- **論理削除のみ** — フロントエンドからの削除リクエストは論理削除のみ（物理削除API禁止）
+- **締め処理後のデータ変更禁止** — 月次/年度締め後のデータ変更をUIで禁止。`JournalPeriodStatus`型に基づく制御
+
+### Naming（命名規約）
+
+- **Vue SFCファイル名: PascalCase** — `LoginPage.vue`
+- **TypeScriptファイル名: camelCase** — `userKeys.ts`
+- **ディレクトリ名: kebab-case** — `journal-upload/`
+- **変数/関数: camelCase、型/interface: PascalCase、定数: UPPER_SNAKE_CASE**
+- **Composable: `use` + PascalCase** — `useCurrentUser`
