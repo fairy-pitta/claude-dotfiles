@@ -102,3 +102,4 @@
 - **モーダル確認後の遷移先整合性** — フローの文脈に合った遷移先が設定されているか確認する。異なるフローで同じモーダルを使用する場合に遷移先が不適切になる。navigateAfterConfirmパターンで遷移先を制御する。
 - **非同期エラー握りつぶし検出** — `.catch(() => {})` でエラーを握りつぶす箇所がUI上でエラー状態を適切に処理しているか確認する。テンプレートの v-else 分岐がエラー状態を想定していない場合、ユーザーに誤解を与える。catch で握りつぶす前にエラー状態がUI上で適切にハンドルされるか確認すること。
 - **async watch の onWatcherCleanup** — async watch コールバック内で非同期処理を行う場合、CODING_STANDARDS の MUST ルールに従い onWatcherCleanup で abort/cancel する。hasInitialized パターンが companyId 等の依存値の変更に対応しているか確認する。
+- **watch immediate:true の oldValue 安全性** `[新観点 from PR#539]` — `watch(..., { immediate: true })` で `oldValue` を分割代入していないか確認。初回コールバックでは `oldValue` が `undefined` になるため、分割代入は TypeError を引き起こす。`oldValues?.[index]` またはガード付きアクセスを使用すること。
