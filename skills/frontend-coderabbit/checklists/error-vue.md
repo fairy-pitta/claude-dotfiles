@@ -104,3 +104,6 @@
 - **async watch の onWatcherCleanup** — async watch コールバック内で非同期処理を行う場合、CODING_STANDARDS の MUST ルールに従い onWatcherCleanup で abort/cancel する。hasInitialized パターンが companyId 等の依存値の変更に対応しているか確認する。
 - **watch immediate:true の oldValue 安全性** `[新観点 from PR#539]` — `watch(..., { immediate: true })` で `oldValue` を分割代入していないか確認。初回コールバックでは `oldValue` が `undefined` になるため、分割代入は TypeError を引き起こす。`oldValues?.[index]` またはガード付きアクセスを使用すること。
 - **エラー識別子のハードコード禁止** `[新観点 from PR#590]` — UIレベルの重複チェック用IDも含め、文字列リテラルのエラー識別子は全て `as const` オブジェクトに定数化する。watcher内のローカル変数定義も対象。CODING_STANDARDS.md Section 10.3 MUST ルール。
+- **querySelector null ガード** `[新観点 from PR#594]` — querySelector の結果が null になるケースで state がリセットされるか確認。DOM未描画時に stale value が残るバグを防ぐ。else ブランチでデフォルト値に戻す。
+- **テーブルスペーサー行の colspan** `[新観点 from PR#594]` — 仮想スクロールのスペーサー `<tr>` で `<td>` が1個だけの場合、colspan でヘッダー/データ行のセル数と一致させているか確認。HTML テーブル仕様違反によるレイアウト崩れを防ぐ。
+- **クリック要素のキーボード操作** `[新観点 from PR#594]` — `@click` を持つ非インタラクティブ要素（th, div等）に `tabindex="0"` + `@keydown.enter` + `@keydown.space.prevent` が付いているか確認。a11y要件。
