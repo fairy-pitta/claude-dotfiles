@@ -5,7 +5,7 @@ description: Detect UI changes, take screenshots from the local dev server, and 
 
 # Capture UI Screenshots
 
-Detect UI file changes on the current branch, take screenshots from the local dev server using browser automation, and upload them to the GitHub PR as a comment.
+Detect UI file changes on the current branch, take screenshots from the local dev server using Playwright, and upload them to the GitHub PR as a comment.
 
 Context: $ARGUMENTS
 
@@ -35,10 +35,10 @@ If no UI-related file changes → report "UI変更なし — スクショをス�
 
 Check common local dev server ports:
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:5173 2>/dev/null
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null
-curl -s -o /dev/null -w "%{http_code}" http://localhost:4173 2>/dev/null
+for port in 5173 3000 8080 4173; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$port" 2>/dev/null)
+  [ "$code" = "200" ] && echo "$port" && break
+done
 ```
 
 Use the first port that returns HTTP 200.
@@ -58,27 +58,76 @@ From the changed file paths, infer which pages/routes to screenshot:
 - If route inference is unclear, screenshot the top page (`/`)
 - Capture at most 5 pages to keep the process fast
 
-### Step 5: Capture screenshots
+### Step 5: Capture screenshots with Playwright
 
-Use `mcp__claude-in-chrome__tabs_create_mcp` to open a new tab, then for each target page:
+Create a temp working directory with Playwright installed, write a capture script, and execute it.
 
-1. Navigate: `mcp__claude-in-chrome__navigate` to `http://localhost:<port>/<route>`
-2. Wait for page load: `mcp__claude-in-chrome__computer` with `action: "wait"`, `duration: 2`
-3. Screenshot: `mcp__claude-in-chrome__computer` with `action: "screenshot"`
-4. Note the `imageId` from the screenshot result
+**IMPORTANT**: Playwright must be resolved from the same directory as the script. Always write the script into the temp directory where `playwright` is installed.
+
+```bash
+WORK_DIR=$(mktemp -d)
+SCREENSHOT_DIR=$(mktemp -d)
+
+# Install playwright in temp dir
+cd "$WORK_DIR" && npm init -y --silent && npm install playwright --silent
+
+# Write capture script into the same directory
+cat > "$WORK_DIR/capture.mjs" << 'SCRIPT'
+import { chromium } from 'playwright';
+const [port, dir, ...routes] = process.argv.slice(2);
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+for (const route of routes) {
+  try {
+    await page.goto(`http://localhost:${port}${route}`, { waitUntil: 'networkidle', timeout: 15000 });
+    const name = route.replace(/\//g, '_').replace(/^_/, '') || 'top';
+    await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
+    console.log(`OK: ${route} -> ${name}.png`);
+  } catch (e) {
+    console.error(`SKIP: ${route} — ${e.message}`);
+  }
+}
+await browser.close();
+SCRIPT
+
+# Run capture
+node "$WORK_DIR/capture.mjs" "${PORT}" "${SCREENSHOT_DIR}" "/" "/users"
+```
+
+Replace `${PORT}` with detected port. Pass target routes as additional arguments.
 
 ### Step 6: Upload screenshots to PR
 
-1. Open the PR page: `mcp__claude-in-chrome__navigate` to the PR URL
-2. Scroll to the comment box at the bottom of the PR
-3. Click on the comment textarea
-4. For each screenshot:
-   - Use `mcp__claude-in-chrome__upload_image` with the `imageId` to attach the image
-   - Wait briefly for upload to complete
-5. Type a comment header: "## UI Screenshots (auto-captured)"
-6. Submit the comment
+Use `gh attach` (gh extension) to upload images and post a PR comment with embedded screenshots:
 
-### Step 7: Report
+```bash
+# Build image args
+IMAGE_ARGS=""
+for img in "$SCREENSHOT_DIR"/*.png; do
+  [ -f "$img" ] || continue
+  IMAGE_ARGS+=" --image $img"
+done
+
+# Upload and comment (--release mode uses GitHub Releases, no browser needed)
+gh attach --issue "$PR_NUMBER" $IMAGE_ARGS --release \
+  --body "## UI Screenshots (auto-captured)"
+```
+
+If `gh attach` is not installed, install it first:
+```bash
+gh extension install atani/gh-attach
+```
+
+Flags:
+- `--release`: uploads via GitHub Releases (no browser automation needed)
+- `--width 800`: default image width (adjustable)
+- `--image`: repeatable, one per screenshot file
+
+### Step 7: Cleanup and report
+
+```bash
+rm -rf "$WORK_DIR" "$SCREENSHOT_DIR"
+```
 
 ```
 === UI Screenshots ===
@@ -89,8 +138,9 @@ PR comment: posted ✓
 
 ## Error Handling
 
-- If browser tools are unavailable → report and exit
+- If Playwright is not installed → the script installs it automatically in a temp dir
 - If dev server is not running → report and exit (do not block)
 - If screenshot capture fails for a specific page → skip that page, continue with others
-- If upload to PR fails → save screenshot info locally and report paths
+- If `gh attach` is not installed → install with `gh extension install atani/gh-attach` and retry
+- If upload to PR fails → Read the screenshots locally with the Read tool to view them inline, and report paths to the user
 - Never block PR creation — this skill is always best-effort
