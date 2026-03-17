@@ -112,3 +112,4 @@
 - **position: fixed 要素のスクロール追従** `[新観点 from PR#606]` — Teleport + fixed ポジショニングでは、表示後のビューポート変化に対応する scroll/resize イベントリスナーが必要。tooltip/popover 実装時は必ずスクロール・リサイズ追従を確認すること。
 - **インタラクティブ要素のセマンティクス** `[新観点 from PR#606]` — `<span tabindex="0">` ではなくネイティブ `<button>` を使う。WAI-ARIA tooltip パターンでは `aria-expanded` は不使用。アイコンのみのトリガーには `aria-label` を必ず付与すること。
 - **バックエンドレスポンス形式の網羅性** `[新観点 from PR#519]` — エラーコード抽出関数が camelCase/snake_case 両方のフィールド名をカバーしているか確認する。バックエンドの `_serializer_error_response` と `ApiResponse._error_response` で形式が異なる場合がある。レスポンスの実際の形式をバックエンドコードで確認し、フロントのパーサーが全形式に対応していることを検証する。
+- **UIの状態遷移パスの網羅確認** `[新観点 from PR#606]` — hover/click/close等の複合インタラクションで、全状態遷移パスが正しく動作するか確認する。特にhover表示中のクリック、click表示後のhover等、状態フラグの切り替えタイミングに注意。close時に全フラグがリセットされるか確認すること。
