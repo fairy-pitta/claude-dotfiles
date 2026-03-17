@@ -227,6 +227,8 @@ gh pr comment {PR_NUMBER} --body "@coderabbitai full review"
 
 **full review連投カウンタをリセットする。**
 
+その後、**Step 5: 遅延Approveチェック** へ進む。
+
 #### 4b. 未解決コメントがない場合 → full review リクエスト
 
 PRコメントの末尾から、**自分が投稿した `@coderabbitai` を含むコメントが連続何件あるか**数える:
@@ -236,8 +238,8 @@ gh api repos/{OWNER}/{REPO}/issues/{PR_NUMBER}/comments --jq \
   '[.[].body] | reverse | [limit(10; .[] | select(contains("@coderabbitai")))] | length'
 ```
 
-- **5回未満**: `gh pr comment {PR_NUMBER} --body "@coderabbitai full review"` を投稿
-- **5回連続で無反応（Approveもコメントもなし）**: → **PRを再作成する**（Step 5 へ）
+- **5回未満**: `gh pr comment {PR_NUMBER} --body "@coderabbitai full review"` を投稿 → **Step 5: 遅延Approveチェック** へ進む
+- **5回連続で無反応（Approveもコメントもなし）**: → **PRを再作成する**（Step 6 へ）
 
 ---
 
@@ -249,7 +251,24 @@ gh api repos/{OWNER}/{REPO}/issues/{PR_NUMBER}/comments --jq \
 date -v+12H "+%M %H %d %m"
 ```
 
-## Step 5: PR再作成（5回無反応時）
+## Step 5: 遅延Approveチェック（full review投稿後）
+
+`@coderabbitai full review` を投稿した直後はApproveされない。CodeRabbitの処理時間を考慮し、**20分待ってからApproveと未解決コメントを再チェックする。**
+
+```
+1. sleep 1200  （20分待機）
+2. Approveチェック（Step 3-2 と同じクエリ）
+   - Approve済み → 監視終了（CronDelete）
+   - 未Approve → 未解決コメントチェック（Step 3-3 と同じクエリ）
+     - 未解決コメントあり → Step 3-4a と同じサブエージェント対応 → full review投稿 → 再度20分待機して再チェック（最大2回まで）
+     - 未解決コメントなし → 次のcronまで待機
+```
+
+**注意:**
+- 1回のcron実行内で遅延チェックは**最大2回**まで（無限ループ防止）
+- 2回チェックしてもApproveされない場合は次のcron実行まで待機
+
+## Step 6: PR再作成（5回無反応時）
 
 CodeRabbitが5回連続で `@coderabbitai full review` に反応しない場合、PRを閉じて同じ内容で再作成する。
 
