@@ -32,6 +32,7 @@
 - **Serializer SerializerMethodField の戻り値型精度** - `SerializerMethodField` のメソッドで `Optional[str]` を返しているが、渡すフィールドが non-Optional な場合は `str` に絞れる。エンティティのフィールド定義と照合して型精度を上げること。
 - **EventStream型定義の網羅性** — AWS Bedrock等の外部サービスのストリームイベント型が、チャンクだけでなく例外イベント型も含んでいるかチェック。TypeDictのtotal=Falseの適切な使用。
 - **DTO型とUseCase分岐の一致性** — UseCaseで条件分岐する場合、DTOの型がその分岐を反映しているかチェック。Optionalで済ませずUnion型で意図を明示する
+- **テストヘルパーの型ヒント精度** — テストヘルパー関数の引数型がドメインエンティティやリクエスト型の実際のフィールド型と一致しているか確認する。`object`のような広すぎる型はテストの型安全性を損なう。ドメイン型に合わせて`UUID | None`等の具体型を使う
 
 ### Validation & Error Handling（詳細）
 
