@@ -13,7 +13,7 @@
 - [ ] **`any`型禁止** — `any`は禁止。`unknown`/`never`/ジェネリクス/型ガードで代替
 - [ ] **`enum`禁止** — TypeScriptの`enum`は禁止。`const + as const + typeof`で代替（→ `references/code-examples.md`）
 - [ ] **型アサーション原則禁止** — `as`キャスト・`!`(non-null assertion)は原則禁止。「必殺技」であり最終手段。`?? デフォルト値`/型ガード/`unknown`+narrowing/ジェネリクスで代替。`as unknown as X`は絶対NG。許容されるのはライブラリが型を提供していない等の回避不能なケースのみ
-- [ ] **`console.*`禁止** — `console.log/warn/error`等は禁止。エラーは4層パイプライン経由
+- [ ] **`console.*`禁止** — `console.log/warn/error`等の直接使用は禁止。`shared/lib/logger.ts`経由で出力する（DEV環境のみ出力）。エラーは4層パイプライン経由
 - [ ] **`<script setup lang="ts">`必須** — `lang="ts"`の省略禁止
 
 ### State Management
@@ -30,6 +30,7 @@
 ### Type Safety（詳細）
 
 - **型アサーション`as`/`!`の残存チェック** — Core観点の原則禁止に加え、テストコードも含めて`as`/`!`が残っていないか確認。テストでは`?? []`/`?? ''`等のフォールバックで代替可能なケースが多い
+- **toEntity()でsnake_case→camelCase変換必須** — APIレスポンスのsnake_caseをそのまま使わず、必ず`toEntity()`でドメイン型（camelCase）に変換する。Backend型は`entities/*/api/*ApiTypes.ts`、ドメイン型は`entities/*/model/*Types.ts`に定義
 - **型定義の配置** — ドメインモデル型は`entities/*/model/`、APIスキーマは`entities/*/api/`、フォームバリデーションは`features/*/model/`、汎用型は`shared/types/`に配置
 - **Zodによるruntime validation** — 認証・権限・金額等のクリティカルなAPIは本番でもZod検証必須。検証はAPI層で1回のみ、UI層に生データを持ち込まない
 - **typeをデフォルト使用** — `type`をデフォルト使用。`interface`は拡張前提の公開契約のみ
@@ -41,7 +42,7 @@
 ### State Management（詳細）
 
 - **状態の3分類** — サーバー状態→TanStack Query、クライアントグローバル状態→composable singleton、ローカルUI状態→コンポーネント内ref。混在禁止
-- **Pinia非推奨** — Piniaの`defineStore`を使用していないか。3条件全て（3+箇所の読み書き、複雑な状態遷移、DevTools必須）を満たす場合のみ検討可
+- **Pinia使用禁止** — Piniaの`defineStore`を使用していないか。Piniaは使用しない。サーバー状態はTanStack Query、クライアントグローバル状態はcomposable singleton（module-level ref + `readonly()`）で管理
 - **Props バケツリレー防止** — 3階層以上のprops受け渡しがないか。provide/inject、composable singleton等で解決
 - **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
 - **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。

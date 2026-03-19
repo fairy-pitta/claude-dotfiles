@@ -11,7 +11,7 @@
 ### TanStack Vue Query
 
 - [ ] **QueryKey Factoryパターン** — QueryKeyは必ずFactoryパターンで定義。マスターデータは`['master', ...]` prefix必須（→ `references/code-examples.md`）
-- [ ] **Pinia非推奨** — サーバー状態をPiniaとTanStack Queryの両方で管理しない。サーバー状態はTanStack Queryに集約
+- [ ] **Pinia使用禁止** — Piniaは使用しない。サーバー状態はTanStack Query、クライアントグローバル状態はcomposable singleton（module-level ref + `readonly()`）で管理
 
 ---
 
@@ -19,11 +19,15 @@
 
 ### TanStack Vue Query（詳細）
 
-- **キャッシュ戦略の適切性** — データの性質に応じた`staleTime`/`gcTime`が設定されているか（デフォルト: 1min/5min、マスタ: 24h/7d、トランザクション: 30s-2min/10-30min）。4xxはリトライしない（408/429を除く）
+- **キャッシュ戦略の適切性** — データの性質に応じた`staleTime`/`gcTime`が設定されているか（デフォルト: 1min/5min、マスタ: 24h/7d、トランザクション: 30s-2min/10-30min）
+- **リトライ回数の遵守** — 4xx（408/429以外）→リトライ0、408/429→最大2、5xx/ネットワーク→最大1、Mutation→常に0
 - **queryFnのsignal対応** — `queryFn`が`signal`を受け取りキャンセルに対応しているか
 - **QueryKeyのシリアライズ可能性** — QueryKeyに`Date`,クラスインスタンス,`function`,`undefined`,`Symbol`を含めていないか。オプショナルparamsにデフォルト値を設定
 - **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
-- **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
+- **楽観的更新禁止（全Mutation）** — 全Mutationで楽観的更新は禁止。サーバーレスポンスを待ち、`onSuccess`でキャッシュ無効化する
+- **Mutation配置ルール** — entityのMutationは`entities/*/api/*Mutations.ts`、featureのMutationは`features/*/model/*Mutations.ts`に配置
+- **enabledは`computed()`でゲート** — `useQuery`の`enabled`オプションは`computed()`でラップし、リアクティブにゲートする
+- **ensureQueryData（ルートガード用）** — ルートガード等でキャッシュがあればそのまま使用、なければfetchするパターンには`queryClient.ensureQueryData()`を使用
 - **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
 - **invalidateQueries 後の重複 refetch** `[新観点 from PR#437]` — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
 - **Promise.allSettled + AbortSignal チェック** `[新観点 from PR#437]` — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
