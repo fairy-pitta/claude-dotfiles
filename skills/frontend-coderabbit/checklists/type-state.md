@@ -58,3 +58,4 @@
 - **String(unknown)の暗黙変換禁止** `[新観点 from PR#491]` — `String(unknown)` の暗黙変換は `[object Object]` を生む。unknown 型の値を文字列化する場合は必ず `typeof` ガードを入れる。セルフレビューで `String()` や `.toString()` に unknown/object が渡される箇所を grep で検出すべき。
 - **外部ストレージ復元時のasキャスト禁止** `[新観点 from PR#623]` — sessionStorage/IndexedDB からの復元時に `as` キャストで型安全性を無視していないかチェックする。外部ストレージからの入力は常にtype guardでバリデーションが必要。
 - **復元値のcompanyIdを信頼しない** `[新観点 from PR#623]` — 外部ストレージから復元した値をそのまま信頼していないかチェックする。companyIdのようなセキュリティ境界に関わる値は、復元値ではなく現在のルートコンテキストをSingle Source of Truthとする。
+- **インライン型importの禁止** `[新観点 from PR#637]` — `import('@playwright/test').Page`のようなインライン型指定を使わない。可読性が低く他ファイルと一貫しない。トップレベルで`import type { Page } from '@playwright/test'`のように`type`キーワード付きimportを使うこと。

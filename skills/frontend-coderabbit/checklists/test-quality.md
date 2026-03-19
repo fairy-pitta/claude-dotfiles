@@ -51,6 +51,9 @@
 - **composable singletonの外部副作用モック** `[新観点 from PR#623]` — composable singletonのテストで永続化・API呼び出し等の外部副作用がモックされているか確認する。特にhydrate（復元）とset（ユーザー操作）で副作用の有無が異なる場合、その差分をテストで固定すべき。debounceやtimerが残るテストはflakyの原因。
 - **nextTick vs flushPromises** `[新観点 from PR#623]` — ボタンクリック後に「APIが呼ばれないこと」を検証する場合、nextTick()は同期的DOM更新のみ待機しPromise chainは待機しない。flushPromises()で全非同期を完了させてからアサートすべき。
 - **ページテストのストアresetモック** `[新観点 from PR#623]` — ページテストでストアモック定義時、テスト対象コードが呼び出す全メソッドがモックに含まれているか確認する。特に「状態クリア」系フローでは永続層(clearFlowState)だけでなくメモリ上のシングルトン(reset)も検証しないとSPAでの状態漏洩を見逃す。
+- **waitForURL後の冗長なURL assertion** `[新観点 from PR#637]` — `waitForURL`は内部的にURLマッチを待機+検証するため、直後の`expect(page.url()).toContain()`は冗長。待機系APIが暗黙にアサーションを含むか意識し、重複検証を避ける。
+- **同一URLパターンの複数route登録にJSDoc** `[新観点 from PR#637]` — Playwrightの`page.route`で同一URLパターンに複数ハンドラを登録する場合、評価順序（後勝ち+fallback連鎖）をJSDocに明記する。暗黙の順序依存は保守性を損なう。
+- **VRT UI操作後の状態安定化** `[新観点 from PR#637]` — `check()`等のUI操作後、スクリーンショット撮影前に`toBeChecked()`等で状態確認アサーションを入れる。アクション完了とUIレンダリング完了は別であり、VRTのフレーク防止に必須。
 
 ### Accounting（会計固有ルール）
 
