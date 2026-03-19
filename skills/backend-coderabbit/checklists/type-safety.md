@@ -69,3 +69,5 @@
 - **Result型とraise混在** `[新観点 from PR#622]` — Result型を返す関数内で例外をraiseしていないか確認する。タプルアンパック前提の呼び出し側で捕捉できず500になる
 - **TextChoices/IntegerChoicesのEnum型アノテーション** `[新観点 from PR#622]` — TextChoices/IntegerChoicesのEnum値を受け取る引数を基底型（str/int）でアノテーションしていないか確認する。基底型だとEnum以外の任意値が通り、コードの意図も不明確になる。Enum型でアノテーションすること
 - **Enum分岐の網羅性** `[新観点 from PR#622]` — if/elif/elseでEnumを分岐する際、elseが「残り全て」を暗黙処理していないか確認。Enumにバリアントが追加された場合に誤動作する。明示的に全バリアントを分岐し、未知値は例外にする
+- **TypedDictフィールドの全状態カバレッジ** `[新観点 from PR#633]` — TypedDictに定義した各フィールドの全状態値（特にbool型のTrue/False両方）を生成するコードパスが存在するか確認。定義だけして生成パスが欠落すると、集計・表示ロジックが実態とずれる。
+- **`*args`/`**kwargs`の型注釈** `[新観点 from PR#633]` — `*args: T`は「各引数がT型」を意味する。`*args: tuple[...]`や`**kwargs: dict[...]`はコンテナ型を各要素の型として指定してしまう誤り。正しくは`*args: object, **options: object`とし、個別値は`cast()`で絞り込む。
