@@ -58,3 +58,4 @@
 - **クロスオリジン環境でのCookie読み取り安全性** — `document.cookie`は現在のoriginのCookieのみ返すため、APIが別originの場合にそのCookie値をCSRFトークンとして信頼してはいけない。Cookie読み取りにはAPI originと`window.location.origin`の一致チェックをセットで実装すること
 - **権限判定のデータソース一貫性チェック** — 権限判定で使用するregionIdが表示対象エンティティの所属地域と一致しているか確認する。selectedRegion等のグローバル状態に依存していると、ユーザーが地域を切り替えた際に表示中エンティティとは無関係な権限判定になる。エンティティ自身が持つregionIdを使用すること
 - **write API の二重送信防止ガード** `[新観点 from PR#616]` — mutation を呼ぶ関数には、UI の disabled 属性だけでなく関数側でも `isPending` / cooldown フラグによる早期 return を入れる。disabled はテンプレート側の制御であり、プログラム的な呼び出しを防げない。
+- **queryFnでのsignal伝播漏れ** `[新観点 from PR#624]` — TanStack Queryの `queryFn` は常に `signal` を受け取り下流のfetch関数に伝播すべき。`ensureQueryData` でも同様。`queryFn: () => fetch()` ではなく `queryFn: ({ signal }) => fetch({ signal })` とする。

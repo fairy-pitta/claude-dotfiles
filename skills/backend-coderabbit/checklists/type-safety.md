@@ -71,3 +71,6 @@
 - **Enum分岐の網羅性** `[新観点 from PR#622]` — if/elif/elseでEnumを分岐する際、elseが「残り全て」を暗黙処理していないか確認。Enumにバリアントが追加された場合に誤動作する。明示的に全バリアントを分岐し、未知値は例外にする
 - **TypedDictフィールドの全状態カバレッジ** `[新観点 from PR#633]` — TypedDictに定義した各フィールドの全状態値（特にbool型のTrue/False両方）を生成するコードパスが存在するか確認。定義だけして生成パスが欠落すると、集計・表示ロジックが実態とずれる。
 - **`*args`/`**kwargs`の型注釈** `[新観点 from PR#633]` — `*args: T`は「各引数がT型」を意味する。`*args: tuple[...]`や`**kwargs: dict[...]`はコンテナ型を各要素の型として指定してしまう誤り。正しくは`*args: object, **options: object`とし、個別値は`cast()`で絞り込む。
+- **docstringと実装の戻り値型一致** `[新観点 from PR#624]` — 関数のdocstringに記載した戻り値型が実装と一致しているか確認する。特にResult型でエラーバリアントを追加した場合、docstringも更新する。戻り値パターンを変更したらdocstringも同時に修正する。
+- **エラー型とHTTPステータスコードのマッピング** `[新観点 from PR#624]` — `ApiResponse.error()` のマッピングテーブルに存在しないエラー型（例: `ValueError`）を使っていないか確認する。`ValidationError` → 400、`PermissionDeniedError` → 403 等の対応を意識する。
+- **Factory戻り値の型注釈** `[新観点 from PR#624]` — `UserFactory()` の戻り値を `UserFactory` 型で注釈しない。Factoryは生成物の型（`User`）を返す。
