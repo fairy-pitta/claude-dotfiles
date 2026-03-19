@@ -92,3 +92,4 @@
 - **入力バリデーションの一貫性** `[新観点 from PR#619]` — 同一の外部入力（URLクエリパラメータ等）を複数箇所で処理する場合、バリデーション/正規化ロジックが統一されているかチェックする。props側とmeta側で異なる関数を使っていると許可リスト変更時に漏れが生じる。共通ヘルパーに集約すべき。
 - **Vue RouterのbeforeEnterと子ルート遷移** `[新観点 from PR#624]` — 親ルートの `beforeEnter` は子→子遷移では再実行されない。権限ガードは保護対象の子ルート個別に `beforeEnter` を設定するか、グローバルガード `beforeEach` で `to.matched` を走査する。
 - **ドキュメント内の件数と列挙の整合性** `[新観点 from PR#624]` — 数を記載する際は実際にカウントして一致を確認する。
+- **app層のfeatures内部依存** `[新観点 from PR#623]` — app層(main.ts等)がfeatures内部のモジュールを直接importしていないか確認する。FSD依存方向ルールに従い、features層の公開API(index.ts)のみに依存すべき。resetやcleanup関数もfeature内のindex.tsからre-exportする。
