@@ -51,7 +51,7 @@
 
 - **金額をnumberで直接演算禁止** — Amount型関数（`createAmount()`/`addAmounts()`等）経由必須。丸めは明細単位
 - **会計日付のYYYY-MM形式** — `timestamp(UTC)`と`businessDate(YYYY-MM)`を分離。決算月は`YYYY-13`
-- **仕訳系Mutationの楽観更新禁止** — 冪等キー(Idempotency-Key)必須 + UI側submitting ref + API側冪等キーの二重防止
+- **全Mutationの楽観更新禁止** — 楽観的更新は全Mutationで禁止。サーバーレスポンスを待ち`onSuccess`でキャッシュ無効化する。冪等キー(Idempotency-Key)必須 + UI側submitting ref + API側冪等キーの二重防止
 - **論理削除のみ** — フロントエンドからの削除リクエストは論理削除のみ（物理削除API禁止）
 - **締め処理後のデータ変更禁止** — 月次/年度締め後のデータ変更をUIで禁止。`JournalPeriodStatus`型に基づく制御
 

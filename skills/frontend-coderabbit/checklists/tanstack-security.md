@@ -23,7 +23,7 @@
 - **queryFnのsignal対応** — `queryFn`が`signal`を受け取りキャンセルに対応しているか
 - **QueryKeyのシリアライズ可能性** — QueryKeyに`Date`,クラスインスタンス,`function`,`undefined`,`Symbol`を含めていないか。オプショナルparamsにデフォルト値を設定
 - **QueryKeyに`undefined`を渡さない** — キャッシュ汚染の原因。デフォルト値を設定
-- **楽観的更新禁止（仕訳Mutation）** — 仕訳関連のMutationで楽観的更新は禁止。冪等キー必須
+- **楽観的更新禁止（全Mutation）** — 全Mutationで楽観的更新は禁止。サーバーレスポンスを待ち、`onSuccess`でキャッシュ無効化する
 - **Mutation後のinvalidateQueries** — Mutationの`onSuccess`で関連QueryKeyを`invalidateQueries`しているか
 - **invalidateQueries 後の重複 refetch** `[新観点 from PR#437]` — `onSuccess` で `invalidateQueries` が行われているのに、さらに手動で `await query.refetch()` を呼び出していないか。`invalidateQueries` だけで TanStack Query が自動再フェッチするため、追加の `refetch()` は二重更新になる
 - **Promise.allSettled + AbortSignal チェック** `[新観点 from PR#437]` — `Promise.allSettled` はキャンセルシグナルを無視してすべて待つ。`signal` を渡している場合は `Promise.allSettled` の前後で `if (signal?.aborted) throw new DOMException("Aborted", "AbortError")` を入れているか確認する
