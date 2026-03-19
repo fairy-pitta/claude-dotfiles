@@ -11,7 +11,7 @@
 ### TanStack Vue Query
 
 - [ ] **QueryKey Factoryパターン** — QueryKeyは必ずFactoryパターンで定義。マスターデータは`['master', ...]` prefix必須（→ `references/code-examples.md`）
-- [ ] **Pinia非推奨** — サーバー状態をPiniaとTanStack Queryの両方で管理しない。サーバー状態はTanStack Queryに集約
+- [ ] **Pinia使用禁止** — Piniaは使用しない。サーバー状態はTanStack Query、クライアントグローバル状態はcomposable singleton（module-level ref + `readonly()`）で管理
 
 ---
 

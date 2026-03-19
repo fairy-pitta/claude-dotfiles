@@ -41,7 +41,7 @@
 ### State Management（詳細）
 
 - **状態の3分類** — サーバー状態→TanStack Query、クライアントグローバル状態→composable singleton、ローカルUI状態→コンポーネント内ref。混在禁止
-- **Pinia非推奨** — Piniaの`defineStore`を使用していないか。3条件全て（3+箇所の読み書き、複雑な状態遷移、DevTools必須）を満たす場合のみ検討可
+- **Pinia使用禁止** — Piniaの`defineStore`を使用していないか。Piniaは使用しない。サーバー状態はTanStack Query、クライアントグローバル状態はcomposable singleton（module-level ref + `readonly()`）で管理
 - **Props バケツリレー防止** — 3階層以上のprops受け渡しがないか。provide/inject、composable singleton等で解決
 - **`computed`の使用** — テンプレート内の複雑な条件式は`computed`に切り出す
 - **複数watcherの競合チェック** `[新観点 from PR#510]` — 複数のwatcherが同じrefを操作する場合、モード切替（ドックモード等）時の優先順位が正しいか確認する。後続watcherが前のwatcherの設定を上書きしないこと。
