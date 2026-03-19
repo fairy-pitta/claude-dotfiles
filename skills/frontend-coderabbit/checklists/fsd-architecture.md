@@ -93,3 +93,4 @@
 - **Vue RouterのbeforeEnterと子ルート遷移** `[新観点 from PR#624]` — 親ルートの `beforeEnter` は子→子遷移では再実行されない。権限ガードは保護対象の子ルート個別に `beforeEnter` を設定するか、グローバルガード `beforeEach` で `to.matched` を走査する。
 - **ドキュメント内の件数と列挙の整合性** `[新観点 from PR#624]` — 数を記載する際は実際にカウントして一致を確認する。
 - **app層のfeatures内部依存** `[新観点 from PR#623]` — app層(main.ts等)がfeatures内部のモジュールを直接importしていないか確認する。FSD依存方向ルールに従い、features層の公開API(index.ts)のみに依存すべき。resetやcleanup関数もfeature内のindex.tsからre-exportする。
+- **ドキュメント集計値の連動更新** `[新観点 from PR#624]` — ドキュメント内の個別件数を修正した際、タイトルやサマリー行の合計値も連動して更新すること。部分修正だけでなく、同じ数値を参照している他の箇所もgrepで確認すべき。
