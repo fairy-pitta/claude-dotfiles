@@ -54,6 +54,9 @@
 - **waitForURL後の冗長なURL assertion** `[新観点 from PR#637]` — `waitForURL`は内部的にURLマッチを待機+検証するため、直後の`expect(page.url()).toContain()`は冗長。待機系APIが暗黙にアサーションを含むか意識し、重複検証を避ける。
 - **同一URLパターンの複数route登録にJSDoc** `[新観点 from PR#637]` — Playwrightの`page.route`で同一URLパターンに複数ハンドラを登録する場合、評価順序（後勝ち+fallback連鎖）をJSDocに明記する。暗黙の順序依存は保守性を損なう。
 - **VRT UI操作後の状態安定化** `[新観点 from PR#637]` — `check()`等のUI操作後、スクリーンショット撮影前に`toBeChecked()`等で状態確認アサーションを入れる。アクション完了とUIレンダリング完了は別であり、VRTのフレーク防止に必須。
+- **VRTヘルパー活用** `[新観点 from PR#637]` — VRTテストで `page.mouse.move(0,0)` + `toHaveScreenshot` のような定型パターンが3箇所以上あればヘルパー関数に抽出する。保守性が低下し変更漏れの原因になる。`tests/helpers/vrt-utils.ts` の既存ヘルパーを確認し活用すること。
+- **E2Eセレクタの特異性** `[新観点 from PR#637]` — E2Eテストのセレクタが汎用要素（form, section, div等）に依存していないか確認する。対象画面が壊れてもテストが通る偽陽性の原因になる。画面固有の見出し・ボタンラベル・data-testidで検証すること。
+- **UI操作後の状態待機（E2E/VRT整合）** `[新観点 from PR#637]` — VRT/E2Eでクリック等の操作後、DOM反映の待機なしに次の操作やスクリーンショットに進んでいないか確認する。同じ操作を行う他テストの待機パターンと整合させること。
 
 ### Accounting（会計固有ルール）
 
