@@ -17,6 +17,8 @@
 - [ ] **FSDエイリアス必須** — 相対パスではなく`@app/`, `@pages/`, `@features/`, `@entities/`, `@shared/`のエイリアスを使用。2階層以上の相対パス（`../../`）禁止
 - [ ] **import順序** — 外部ライブラリ → `@shared/` → `@entities/` → `@features/` → `@pages/` → `@app/` → 相対パスの順
 - [ ] **barrel export混在チェック** `[新観点 from PR#539]` — 同一ファイル内で `@shared/ui` 等の barrel export と `.vue` ファイル直接参照が混在していないか確認。barrel export に既に含まれるコンポーネントの直接参照は公開境界を崩す。barrel export 経由に統一すること
+- [ ] **`export *` 禁止** — 各スライスの`index.ts`では公開APIを明示エクスポートする。`export *` は禁止
+- [ ] **Widgets/Processes層は不使用** — 本PJではWidgets層・Processes層は不使用。層構成は `app → pages → features → entities → shared`
 
 ### Unused Code Detection
 
@@ -34,12 +36,14 @@
 
 ### FSD Architecture（詳細）
 
+- **Feature = ロジック中心** — featuresの大半は`model/`のみでUIを持たない。UIの組み立てはpages層で行う。featureに`ui/`を持たせるのは例外的なケースのみ
+- **Segments任意** — 全セグメント（ui, model, api, lib, config）の配置を強制しない。entitiesは`api/` + `model/`が基本、featuresは`model/`が基本。必要なセグメントのみ作成する
 - **entities間の`@x`パターン** — entities間は`import type`のみ許可。ランタイムimportは禁止
 - **3+スライスから使用される機能の昇格** — 3スライス以上から参照されるコードは上位層に昇格必須
 - **Composables→Repository IFを介さず実装に直結はNG** — ComposablesがhttpClient等に直結すると依存方向違反（→ `references/code-examples.md`）
 - **UseCase/Application層のインフラライブラリ依存禁止** — `entities/model/` 配下の UseCase に `import axios from "axios"` 等のインフラライブラリが含まれていないか確認する。Axios エラー変換はリポジトリ（Mutation/Infrastructure）層で行い、UseCase はドメインエラー（プロジェクト定義の Error サブクラス）のみを知るべき
 - **Vue SFC からの型エクスポート禁止** — `.vue` ファイルから `export type` するのは避け、`model/types.ts` 等の純粋な TypeScript ファイルに型を定義する。`index.ts` からは `.vue` ではなく `./model/types` を参照してエクスポートする
-- **Cross-Slice `@x`パターンのルール** — entities間のcross-slice importは`import type`限定、consumer指名ファイル（`@x/<consumer名>.ts`）で管理。`index.ts`の公開APIとは別管理。features間は`@x`含め禁止
+- **Cross-Slice `@x`パターンのルール** — entities間のcross-slice importは`import type`限定、consumer指名ファイル（`@x/<consumer名>.ts`）で管理。`index.ts`の公開APIとは別管理。features間は`@x`含め禁止。※現時点では実コードでは未使用。entities間の型共有が必要になった場合の最終手段として定義
 - **features間共有の昇格ルール** — 3+consumerで必要な関数・型がfeature内に残っていないか。業務ロジック（税計算等）は1-2 consumerでも即entities昇格を検討
 - **pages層のオーケストレーション** — 複数featuresを跨ぐ連携はpages層で。features同士が直接importせずpagesがemitsを受け取りroute/query経由で別featureに伝播。連携手段の優先度: Route params > TanStack Query cache > Props/emits > provide/inject
 - **shared層にビジネスロジック禁止** — shared配置のコードが会社・仕訳・ユーザー等の業務概念を知らないこと。shared→FSD上位層への依存禁止
