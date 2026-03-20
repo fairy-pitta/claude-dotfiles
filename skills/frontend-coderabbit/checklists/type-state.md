@@ -63,3 +63,4 @@
 - **フロー破棄処理の状態リセット漏れ** `[新観点 from PR#623]` — 破棄処理では関連する全てのストア/状態をリセットしているか確認する。モーダルの表示状態も含めて、破棄後にUIが正しい初期状態に戻るか検証する。
 - **ナビゲーションガードの相互排他** `[新観点 from PR#623]` — 複数の遷移ハンドラーがある画面で、各ナビゲーション状態フラグが互いの抑止条件に含まれているか確認する。
 - **derived stateのソース不一致** `[新観点 from PR#586]` — 同一画面内でroute-basedとcomposable-basedのderived stateが混在する場合、reset keyとdata sourceが異なるソースを参照していないか確認する。computedの依存チェーンを追って同期タイミングのズレを検出する。
+- **composable singleton stale stateガード** `[新観点 from PR#642]` — module-level refを使うcomposable singletonでは、前画面からのstale stateが残る前提でクエリの`enabled`ガードだけでなく、引数レベルでもルート同期完了後にのみ値を渡すガードが必要か確認する。stale regionでクエリが発火するとキャッシュ汚染やUXバグの原因になる。
