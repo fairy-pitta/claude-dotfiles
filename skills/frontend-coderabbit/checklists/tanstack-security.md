@@ -59,3 +59,4 @@
 - **権限判定のデータソース一貫性チェック** — 権限判定で使用するregionIdが表示対象エンティティの所属地域と一致しているか確認する。selectedRegion等のグローバル状態に依存していると、ユーザーが地域を切り替えた際に表示中エンティティとは無関係な権限判定になる。エンティティ自身が持つregionIdを使用すること
 - **write API の二重送信防止ガード** `[新観点 from PR#616]` — mutation を呼ぶ関数には、UI の disabled 属性だけでなく関数側でも `isPending` / cooldown フラグによる早期 return を入れる。disabled はテンプレート側の制御であり、プログラム的な呼び出しを防げない。
 - **queryFnでのsignal伝播漏れ** `[新観点 from PR#624]` — TanStack Queryの `queryFn` は常に `signal` を受け取り下流のfetch関数に伝播すべき。`ensureQueryData` でも同様。`queryFn: () => fetch()` ではなく `queryFn: ({ signal }) => fetch({ signal })` とする。
+- **startsWith空文字ガード** `[新観点 from PR#623]` — `startsWith("")`が常に`true`を返す仕様を意識し、プレフィックスベースの操作関数には空文字ガードを必ず入れる。
