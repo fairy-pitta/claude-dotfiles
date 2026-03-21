@@ -65,6 +65,7 @@
 - **watcher/computed分岐の直接テスト** `[新観点 from PR#642]` — watcherやcomputedにロジック分岐を追加した場合、その分岐を直接テストするケースが存在するか確認する。周辺テストが間接的にカバーしているだけでは回帰リスクが残る。
 - **複数ビュー/タブの網羅テスト** `[新観点 from PR#642]` — 同一ロジックが複数ビュー/タブに適用される場合、全ビューのテストカバレッジを確認する。片方だけテストして他方を漏らすパターンに注意。
 - **Record<string>型パターンのファイル全体チェック** `[新観点 from PR#653]` — 1箇所を `as const satisfies` に修正したら、同ファイル内の他の `Record<string, ...>` にも同じ問題がないか全件確認する。部分修正で別の箇所を見落とすリスクがある。
+- **staleキャッシュのmapping不一致テスト** `[新観点 from PR#654]` — initialSelectionを受けるcomposableのテストで、「assignmentは存在するがtarget mappingだけ古い（staleキャッシュ）」ケースのテストがあるか確認する。assignmentの一致だけでは不十分で、mapping一致も含めた分岐を全パステストすべき。
 - **テストファイルの構造順序** `[新観点 from PR#653]` — 変数宣言 → setup/teardown → 前提テスト → 本テストの順序で配置する。前提テストが参照する変数より前に配置されると可読性が低下する。
 - **テストのwrapper unmount漏れ** `[新観点 from PR#654]` — mountヘルパーを使うテストで `afterEach` に `wrapper.unmount()` があるか確認する。Vitestは自動クリーンアップしないため、前テストのwatcherが後続テストを汚染するリスクがある。mountヘルパー内で変数に保持し、afterEachで明示的にunmountする。
 

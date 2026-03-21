@@ -24,6 +24,7 @@
 - [ ] **`logger`/`print`禁止** — `logger`・`print`（マイグレーションbackward含む）の使用禁止
 - [ ] **ユーザー向け/内部向けメッセージの混在チェック** — Msg/InternalMsgの分離が不十分だとAPIレスポンスに内部メッセージが露出するリスクがある。メッセージ定数を追加する際、用途（ユーザー向け/内部向け）を確認して適切なクラスに配置すること
 - [ ] **定数ファイルの責務分離** — メッセージ定数ファイルに設定値（TTL, 閾値等）を混在させていないか確認する。文言定数と運用設定値は別ファイルに分離すること。混在すると責務が曖昧になり保守性が低下する
+- [ ] **except Exceptionで例外情報の保持** `[新観点 from PR#654]` — `except Exception:` でcatchしてResult failureに変換する際、`except Exception as e` として `str(e)` を `ValidationError` の `details` に含めているか確認する。例外情報を握りつぶすとデバッグ困難になる
 - [ ] **DRFフィールド制約のエラーメッセージ定数化** — DRFフィールドにmax_length/min_length/min_value/max_value等の制約を追加する際、error_messagesもセットでMsg定数化されているか確認する。DRFビルトインメッセージはプロジェクトの「エラーメッセージ定数化」ルールの対象外と見落としやすい。error_messagesパラメータで明示的に定数を指定すること
 - [ ] **DRF IntegerFieldのnullエラーメッセージ漏れ** `[新観点 from PR#519]` — `IntegerField`等でerror_messagesに`required`/`invalid`/`min_value`を定数化していても、`null`キーが漏れているとDRFデフォルト文言にフォールバックする。`allow_null=False`（デフォルト）のフィールドには`"null"`キーも必ず追加すること
 - [ ] **開発者向けエラーメッセージの定数化漏れ** — RuntimeErrorなど開発者向けエラーもエラーメッセージ定数化ルールの対象。ユーザー向けエラーだけでなく、Repository契約違反等の内部エラーも定数化されているかチェック。
