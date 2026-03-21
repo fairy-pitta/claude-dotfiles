@@ -66,3 +66,4 @@
 - **initialSelection消費時のstaleキャッシュ対策** `[新観点 from PR#654]` — query paramsやpropsで渡された初期選択値（assignmentId + mappingId等）を消費する際、一方のIDだけの一致で消費しない。assignment AND target mappingの両方が存在する場合のみ消費し、片方だけ見つかった場合かつisLoading中は新データ到着まで待機すること。
 - **invalidateQueriesのawait漏れ** `[新観点 from PR#654]` — `queryClient.invalidateQueries()` を `void` で fire-and-forget していないか確認する。保存後の画面遷移前など、キャッシュ無効化完了を保証すべき箇所では `await Promise.all([...])` で完了を待機する。
 - **composable singleton stale stateガード** `[新観点 from PR#642]` — module-level refを使うcomposable singletonでは、前画面からのstale stateが残る前提でクエリの`enabled`ガードだけでなく、引数レベルでもルート同期完了後にのみ値を渡すガードが必要か確認する。stale regionでクエリが発火するとキャッシュ汚染やUXバグの原因になる。
+- **watch監視対象にエラー状態を含める** `[新観点 from PR#654]` — watchの分岐条件でエラー状態（queryのerror ref等）を参照する場合、そのerror refをwatch sourcesに含めているか確認する。エラー発生時にpending状態を誤って消費すると、リトライ時に初期値が失われる。
