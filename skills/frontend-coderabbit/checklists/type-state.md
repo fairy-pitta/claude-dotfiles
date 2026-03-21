@@ -71,3 +71,5 @@
 - **pending消費の全分岐に!errorガードを設ける** `[新観点 from PR#654]` — initialSelection等のpending値を消費してフォールバックに移行する分岐が複数ある場合、全ての分岐に `!error` ガードが入っているか確認する。「options空 + !isLoading」パスだけでなく「options有 + assignment未存在 + !isLoading」パスにも同じガードが必要。片方だけ `!error` を入れると、もう片方でエラー時にpendingが誤消費される。
 - **String(nullable)によるqueryパラメータ汚染** `[新観点 from PR#654]` — `String(null)` は `"null"`、`String(undefined)` は `"undefined"` になる。router.pushのquery paramsにAPIレスポンスのnullableフィールドを `String()` で変換して渡す場合、事前にnull/undefinedチェックを入れ、欠損時はqueryごと省略すること。
 - **文字列入力のtrim()判定** `[新観点 from PR#654]` — query paramsやフォーム入力の空文字チェックで `!value` だけでなく `!value.trim()` で空白のみの文字列も不正値として扱う。`"   "` は falsy ではないため `!value` をすり抜ける。
+- **void router.pushの成功依存処理** `[新観点 from PR#659]` — `void router.push(...)` の後に状態リセット等の処理を置くと、遷移失敗時にも実行される。遷移成功に依存する処理は `await router.push(...)` で完了を待ち、その後に実行すること。`void` は fire-and-forget であり後続処理の前提条件を保証しない。
+- **初期選択query params消費後のURL残留** `[新観点 from PR#659]` — query paramsで渡された初期選択値（assignmentId等）を消費した後、URLからquery paramsを除去するwatcherが必要。さらにユーザーが手動で選択を変更した場合にも旧query paramsをクリーンアップすること。リロード時に旧値が再適用されるバグの原因になる。
