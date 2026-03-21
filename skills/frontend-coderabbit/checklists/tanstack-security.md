@@ -60,3 +60,4 @@
 - **write API の二重送信防止ガード** `[新観点 from PR#616]` — mutation を呼ぶ関数には、UI の disabled 属性だけでなく関数側でも `isPending` / cooldown フラグによる早期 return を入れる。disabled はテンプレート側の制御であり、プログラム的な呼び出しを防げない。
 - **queryFnでのsignal伝播漏れ** `[新観点 from PR#624]` — TanStack Queryの `queryFn` は常に `signal` を受け取り下流のfetch関数に伝播すべき。`ensureQueryData` でも同様。`queryFn: () => fetch()` ではなく `queryFn: ({ signal }) => fetch({ signal })` とする。
 - **startsWith空文字ガード** `[新観点 from PR#623]` — `startsWith("")`が常に`true`を返す仕様を意識し、プレフィックスベースの操作関数には空文字ガードを必ず入れる。
+- **QueryKeyアサーションのハードコード禁止** `[新観点 from PR#654]` — テストで `queryKey: ["journals"]` のようなリテラル配列を直書きしていないか確認する。QueryKey Factory定数（`journalKeys.all` 等）を参照しないと、定数側の変更時にテストが偽陽性になる。`toHaveBeenCalledWith({ queryKey: xxxKeys.yyy })` の形式を使う。
