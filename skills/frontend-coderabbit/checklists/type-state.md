@@ -70,3 +70,4 @@
 - **watch監視対象にエラー状態を含める** `[新観点 from PR#654]` — watchの分岐条件でエラー状態（queryのerror ref等）を参照する場合、そのerror refをwatch sourcesに含めているか確認する。エラー発生時にpending状態を誤って消費すると、リトライ時に初期値が失われる。
 - **pending消費の全分岐に!errorガードを設ける** `[新観点 from PR#654]` — initialSelection等のpending値を消費してフォールバックに移行する分岐が複数ある場合、全ての分岐に `!error` ガードが入っているか確認する。「options空 + !isLoading」パスだけでなく「options有 + assignment未存在 + !isLoading」パスにも同じガードが必要。片方だけ `!error` を入れると、もう片方でエラー時にpendingが誤消費される。
 - **String(nullable)によるqueryパラメータ汚染** `[新観点 from PR#654]` — `String(null)` は `"null"`、`String(undefined)` は `"undefined"` になる。router.pushのquery paramsにAPIレスポンスのnullableフィールドを `String()` で変換して渡す場合、事前にnull/undefinedチェックを入れ、欠損時はqueryごと省略すること。
+- **文字列入力のtrim()判定** `[新観点 from PR#654]` — query paramsやフォーム入力の空文字チェックで `!value` だけでなく `!value.trim()` で空白のみの文字列も不正値として扱う。`"   "` は falsy ではないため `!value` をすり抜ける。

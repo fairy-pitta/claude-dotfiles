@@ -68,6 +68,7 @@
 - **staleキャッシュのmapping不一致テスト** `[新観点 from PR#654]` — initialSelectionを受けるcomposableのテストで、「assignmentは存在するがtarget mappingだけ古い（staleキャッシュ）」ケースのテストがあるか確認する。assignmentの一致だけでは不十分で、mapping一致も含めた分岐を全パステストすべき。
 - **テストファイルの構造順序** `[新観点 from PR#653]` — 変数宣言 → setup/teardown → 前提テスト → 本テストの順序で配置する。前提テストが参照する変数より前に配置されると可読性が低下する。
 - **テストのwrapper unmount漏れ** `[新観点 from PR#654]` — mountヘルパーを使うテストで `afterEach` に `wrapper.unmount()` があるか確認する。Vitestは自動クリーンアップしないため、前テストのwatcherが後続テストを汚染するリスクがある。mountヘルパー内で変数に保持し、afterEachで明示的にunmountする。
+- **空白文字列入力のテストケース** `[新観点 from PR#654]` — 文字列入力のバリデーションテストで空文字 `""` だけでなく空白のみ `"   "` やタブ `"\t"` のケースも追加する。`trim()` 判定の回帰を検出するため。
 
 ### Accounting（会計固有ルール）
 
