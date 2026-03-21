@@ -61,3 +61,4 @@
 - **queryFnでのsignal伝播漏れ** `[新観点 from PR#624]` — TanStack Queryの `queryFn` は常に `signal` を受け取り下流のfetch関数に伝播すべき。`ensureQueryData` でも同様。`queryFn: () => fetch()` ではなく `queryFn: ({ signal }) => fetch({ signal })` とする。
 - **startsWith空文字ガード** `[新観点 from PR#623]` — `startsWith("")`が常に`true`を返す仕様を意識し、プレフィックスベースの操作関数には空文字ガードを必ず入れる。
 - **QueryKeyアサーションのハードコード禁止** `[新観点 from PR#654]` — テストで `queryKey: ["journals"]` のようなリテラル配列を直書きしていないか確認する。QueryKey Factory定数（`journalKeys.all` 等）を参照しないと、定数側の変更時にテストが偽陽性になる。`toHaveBeenCalledWith({ queryKey: xxxKeys.yyy })` の形式を使う。
+- **背景再取得中のisFetchingチェック必須** `[新観点 from PR#654]` — TanStack Queryの背景再取得（background refetch）中は `isLoading=false` だが `isFetching=true` になる。初期選択やpending状態の消費判定で `!isLoading && !error` を使っている箇所は `!isLoading && !isFetching && !error` に変更すること。staleキャッシュで初期選択が誤って確定するリスクがある。
