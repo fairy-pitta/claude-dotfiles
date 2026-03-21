@@ -89,6 +89,15 @@ Conduct code reviews mimicking lits0ra's casual, direct, and conversational appr
 | P7 | **permission_classesが明示的に設定されているか** | 「ViewのPermission、デフォルトに依存してる気がします！明示的に設定した方が安全です」 |
 | P8 | **ステータス/カテゴリ値がEnum化されているか** | 「nits\nstatusはenumから参照したいです🙇」 |
 
+### テスト品質チェック
+
+| # | チェック | Soraっぽい指摘例 |
+|---|---------|-----------------|
+| T1 | **`Record<string, ...>` でドメイン型が `string` に広がっていないか** | 「Record<string, ...> だと keyof が string になっちゃうので、as const タプル + satisfies にした方がよさそうです！」 |
+| T2 | **`it.each` / `describe.each` に動的配列を渡して空配列でサイレントパスしないか** | 「guardedRoutes が空だとテスト0件で通っちゃいます！前提検証テスト追加した方がいい気がします」 |
+| T3 | **テストヘルパーの引数でドメイン型が `string` に緩められていないか** | 「permissionCodes が string[] だと typo 見逃しちゃいます！PermissionCode[] にした方がいいかもです」 |
+| T4 | **`process.cwd()` 依存のパス解決をしていないか** | 「process.cwd() だと実行ディレクトリ変わると壊れちゃいます！import.meta.url ベースにした方が安全です」 |
+
 ### 中優先チェック
 
 | # | チェック | Soraっぽい指摘例 |
