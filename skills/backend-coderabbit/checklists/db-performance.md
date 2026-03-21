@@ -41,3 +41,4 @@
 - **Migration インポート位置** - `django.db.models` の汎用クラス（Count など）は関数内ではなくモジュールトップでインポートする。モデル取得（`apps.get_model()`）は関数内が必須だが、汎用クラスはトップレベルで OK。
 - **Python/JS間の数値精度不整合** — Python の任意精度整数をそのまま許可すると、JS の `Number.MAX_SAFE_INTEGER` (2^53-1) を超える値がフロントエンドで丸められデータ破損する。数値バリデーションでは JS 安全整数範囲チェックを追加すること。
 - **QuerySet.update()とauto_nowの非互換** `[新観点 from PR#622]` — `QuerySet.update()` は `save()` をバイパスするため `auto_now=True` の `updated_at` が更新されない。bulk update時は常に `updated_at=timezone.now()` の明示セットを確認する。
+- **filter().first()よりget()で一意性を保証** `[新観点 from PR#654]` — ビジネスルール上一意であるべきレコードの取得に `.filter().first()` を使うと、重複データが存在しても最初の1件を返してサイレントに成功する。`.get()` を使い `DoesNotExist` → `success(None)`, `MultipleObjectsReturned` → `failure(...)` で明示的にハンドリングすること。

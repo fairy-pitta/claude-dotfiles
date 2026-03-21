@@ -63,6 +63,7 @@
 - **フロー破棄処理の状態リセット漏れ** `[新観点 from PR#623]` — 破棄処理では関連する全てのストア/状態をリセットしているか確認する。モーダルの表示状態も含めて、破棄後にUIが正しい初期状態に戻るか検証する。
 - **ナビゲーションガードの相互排他** `[新観点 from PR#623]` — 複数の遷移ハンドラーがある画面で、各ナビゲーション状態フラグが互いの抑止条件に含まれているか確認する。
 - **derived stateのソース不一致** `[新観点 from PR#586]` — 同一画面内でroute-basedとcomposable-basedのderived stateが混在する場合、reset keyとdata sourceが異なるソースを参照していないか確認する。computedの依存チェーンを追って同期タイミングのズレを検出する。
+- **ユーザー手動操作時のpending初期選択破棄** `[新観点 from PR#654]` — composableがinitialSelection等のpending状態を保持する場合、ユーザーが手動でsetterを呼んだ時点でpendingを破棄する。そうしないと、後からデータが到着した際にユーザーの手動選択がpendingの自動適用で上書きされる。setterに `resolveInitialSelectionByUserAction()` を入れ、watcherにも `initialSelectionApplied` ガードを追加すること。
 - **initialSelection消費時のstaleキャッシュ対策** `[新観点 from PR#654]` — query paramsやpropsで渡された初期選択値（assignmentId + mappingId等）を消費する際、一方のIDだけの一致で消費しない。assignment AND target mappingの両方が存在する場合のみ消費し、片方だけ見つかった場合かつisLoading中は新データ到着まで待機すること。
 - **invalidateQueriesのawait漏れ** `[新観点 from PR#654]` — `queryClient.invalidateQueries()` を `void` で fire-and-forget していないか確認する。保存後の画面遷移前など、キャッシュ無効化完了を保証すべき箇所では `await Promise.all([...])` で完了を待機する。
 - **composable singleton stale stateガード** `[新観点 from PR#642]` — module-level refを使うcomposable singletonでは、前画面からのstale stateが残る前提でクエリの`enabled`ガードだけでなく、引数レベルでもルート同期完了後にのみ値を渡すガードが必要か確認する。stale regionでクエリが発火するとキャッシュ汚染やUXバグの原因になる。
