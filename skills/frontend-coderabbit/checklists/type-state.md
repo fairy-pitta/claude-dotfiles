@@ -67,3 +67,4 @@
 - **invalidateQueriesのawait漏れ** `[新観点 from PR#654]` — `queryClient.invalidateQueries()` を `void` で fire-and-forget していないか確認する。保存後の画面遷移前など、キャッシュ無効化完了を保証すべき箇所では `await Promise.all([...])` で完了を待機する。
 - **composable singleton stale stateガード** `[新観点 from PR#642]` — module-level refを使うcomposable singletonでは、前画面からのstale stateが残る前提でクエリの`enabled`ガードだけでなく、引数レベルでもルート同期完了後にのみ値を渡すガードが必要か確認する。stale regionでクエリが発火するとキャッシュ汚染やUXバグの原因になる。
 - **watch監視対象にエラー状態を含める** `[新観点 from PR#654]` — watchの分岐条件でエラー状態（queryのerror ref等）を参照する場合、そのerror refをwatch sourcesに含めているか確認する。エラー発生時にpending状態を誤って消費すると、リトライ時に初期値が失われる。
+- **pending消費の全分岐に!errorガードを設ける** `[新観点 from PR#654]` — initialSelection等のpending値を消費してフォールバックに移行する分岐が複数ある場合、全ての分岐に `!error` ガードが入っているか確認する。「options空 + !isLoading」パスだけでなく「options有 + assignment未存在 + !isLoading」パスにも同じガードが必要。片方だけ `!error` を入れると、もう片方でエラー時にpendingが誤消費される。
