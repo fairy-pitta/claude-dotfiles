@@ -14,25 +14,33 @@ Create an isolated git worktree for the specified branch: $ARGUMENTS
    git fetch origin
    ```
 
-2. **Create worktree directory**
+2. **Determine worktree base directory**
+   - If `.git-worktrees/` exists in the current directory, use it
+   - Otherwise, fall back to `.claude/worktrees/`
    ```bash
-   mkdir -p .git-worktrees
+   if [ -d ".git-worktrees" ]; then
+     WORKTREE_BASE=".git-worktrees"
+   else
+     WORKTREE_BASE=".claude/worktrees"
+   fi
+   mkdir -p "$WORKTREE_BASE"
    ```
 
 3. **Create worktree**
    - Convert branch name (replace `/` with `-`)
-   - Create worktree in `.git-worktrees/[branch-name]`
+   - Create worktree in `$WORKTREE_BASE/[branch-name]`
    ```bash
    BRANCH_NAME=$(echo "$ARGUMENTS" | tr '/' '-')
-   git worktree add .git-worktrees/$BRANCH_NAME -b $ARGUMENTS origin/main
+   git worktree add "$WORKTREE_BASE/$BRANCH_NAME" -b $ARGUMENTS origin/main
    ```
 
 4. **Setup environment**
    ```bash
-   cd .git-worktrees/$BRANCH_NAME
+   cd "$WORKTREE_BASE/$BRANCH_NAME"
    # Copy environment files if they exist
-   cp ../../.env .env 2>/dev/null || true
-   cp ../../.env.local .env.local 2>/dev/null || true
+   ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo "../..")
+   cp "$ROOT_DIR/.env" .env 2>/dev/null || true
+   cp "$ROOT_DIR/.env.local" .env.local 2>/dev/null || true
    # Install dependencies
    npm install 2>/dev/null || yarn install 2>/dev/null || true
    ```
@@ -45,12 +53,12 @@ Create an isolated git worktree for the specified branch: $ARGUMENTS
 
 If worktree already exists:
 ```bash
-cd .git-worktrees/$BRANCH_NAME
+cd "$WORKTREE_BASE/$BRANCH_NAME"
 git pull origin main
 ```
 
 ## Cleanup (when done)
 
 ```bash
-git worktree remove .git-worktrees/$BRANCH_NAME
+git worktree remove "$WORKTREE_BASE/$BRANCH_NAME"
 ```
