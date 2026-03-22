@@ -93,3 +93,4 @@
 - **モック戻り値の下流呼び出し引数検証** `[新観点 from PR#654]` — モックが変換後の値を返す場合、下流メソッドがその変換後の値を第1引数として受け取っていることを `call_args[0][0]` で検証する。`assert_called_once()` だけでは引数の取り違えを検出できない。
 - **テストヘルパーの戻り値型をdataclassで具体化** `[新観点 from PR#654, 更新 PR#659]` — `build_mock_*` 系ヘルパーで `type()` による動的クラス生成や `Protocol` ではなく `@dataclass(frozen=True, slots=True)` を使用する。frozen dataclassは不変性・型安全性・IDE補完を同時に担保し、Protocolより堅牢。
 - **ValidationError.detailsのcauseフィールド検証** `[新観点 from PR#654]` — `ValidationError` を返すテストでは `str(error)` のメッセージだけでなく `error.details["cause"]` まで検証する。原因文字列が消えてもメッセージ検証だけでは検出できない。
+- **例外文言への依存テスト** `[新観点 from PR#659]` — テストのアサーションが内部実装の文言（例外メッセージ、ログ文字列等）に依存していないか確認する。定数やエラーコードでアサーションすべき。
