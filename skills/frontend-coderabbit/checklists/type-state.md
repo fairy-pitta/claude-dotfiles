@@ -73,3 +73,4 @@
 - **文字列入力のtrim()判定** `[新観点 from PR#654]` — query paramsやフォーム入力の空文字チェックで `!value` だけでなく `!value.trim()` で空白のみの文字列も不正値として扱う。`"   "` は falsy ではないため `!value` をすり抜ける。
 - **void router.pushの成功依存処理** `[新観点 from PR#659]` — `void router.push(...)` の後に状態リセット等の処理を置くと、遷移失敗時にも実行される。遷移成功に依存する処理は `await router.push(...)` で完了を待ち、その後に実行すること。`void` は fire-and-forget であり後続処理の前提条件を保証しない。
 - **初期選択query params消費後のURL残留** `[新観点 from PR#659]` — query paramsで渡された初期選択値（assignmentId等）を消費した後、URLからquery paramsを除去するwatcherが必要。さらにユーザーが手動で選択を変更した場合にも旧query paramsをクリーンアップすること。リロード時に旧値が再適用されるバグの原因になる。
+- **比較時の正規化一貫性** `[新観点 from PR#663]` — 2つの値を比較する際、片方だけ正規化していないか確認する。`normalizeTargetHeader` 等の正規化関数を一方にのみ適用して比較すると、空白やケースの違いで不一致が生じる。比較の両辺に同じ正規化を適用すること。
