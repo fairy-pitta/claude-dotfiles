@@ -70,6 +70,8 @@
 - **テストのwrapper unmount漏れ** `[新観点 from PR#654]` — mountヘルパーを使うテストで `afterEach` に `wrapper.unmount()` があるか確認する。Vitestは自動クリーンアップしないため、前テストのwatcherが後続テストを汚染するリスクがある。mountヘルパー内で変数に保持し、afterEachで明示的にunmountする。
 - **空白文字列入力のテストケース** `[新観点 from PR#654]` — 文字列入力のバリデーションテストで空文字 `""` だけでなく空白のみ `"   "` やタブ `"\t"` のケースも追加する。`trim()` 判定の回帰を検出するため。
 - **nullable引数の遷移テスト不足** `[新観点 from PR#659]` — composable テストで、引数が nullable な場合に `null → 有効値` への遷移パスをテストしているか確認する。特に TanStack Query の enabled 切り替えが絡む場合は必須。
+- **vi.useFakeTimersのtry/finally保護** `[新観点 from PR#674]` — `vi.useFakeTimers()` を使うテストで `vi.useRealTimers()` がテスト末尾にしかない場合、途中の `await` や `expect` で失敗すると後続テストまでフェイクタイマーのままになる。`try/finally` で `vi.useRealTimers()` を保護すること。
+- **ガードテストでのAPI未呼出アサーション** `[新観点 from PR#674]` — バリデーションガード（companyId検証等）のテストで、エラーメッセージの表示だけでなく「APIが呼ばれていないこと」も検証する。callCountやスパイで送信回数0をアサートしないと、ガードをバイパスしてAPIを叩いていても検出できない。
 
 ### Accounting（会計固有ルール）
 
