@@ -110,12 +110,14 @@ gh pr view {PR_NUMBER} --json title,headRefName,body,state,reviews,url
 
 #### 2. Approve チェック
 
+CodeRabbitの**最新レビュー**（APPROVED or CHANGES_REQUESTED）の状態を確認する。過去にAPPROVEDがあっても、その後CHANGES_REQUESTEDが来ていれば未Approveとみなす。
+
 ```bash
 gh api repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/reviews | \
-  jq '[.[] | select(.user.login == "coderabbitai" and .state == "APPROVED")] | length'
+  jq '[.[] | select(.user.login == "coderabbitai[bot]" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED"))] | last | .state'
 ```
 
-- **Approve済み（1以上）**: "PR #{PR_NUMBER} はCodeRabbitからApprove済みです。監視を終了します。" と報告し、`CronDelete` でこのジョブを停止。**ここで終了。**
+- **`"APPROVED"`**: "PR #{PR_NUMBER} はCodeRabbitからApprove済みです。監視を終了します。" と報告し、`CronDelete` でこのジョブを停止。**ここで終了。**
 
 #### 3. 未解決コメント チェック
 
