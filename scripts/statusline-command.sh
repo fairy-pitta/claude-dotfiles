@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Claude Code Status Line - 3-line display with rate limit info
-# stdin: JSON with model, context, cost, workspace info
+# stdin: JSON with model, context, cost, workspace, rate_limits info
+# Rate limits are now provided natively by Claude Code via stdin JSON
 # Uses zsh for native Unicode escape support (\uXXXX)
 
 input=$(cat)
@@ -65,107 +66,30 @@ progress_bar() {
   echo "$bar"
 }
 
-# ── Rate limit: fetch & cache ───────────────────────────────────
-CACHE_FILE="/tmp/claude-usage-cache.json"
-CACHE_TTL=360
-CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+# ── Rate limits from stdin JSON ──────────────────────────────────
+five_pct_raw=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+seven_pct_raw=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
+five_reset_epoch=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
+seven_reset_epoch=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 
-five_pct=0; seven_pct=0
-five_reset="?"; seven_reset="?"
-
-need_refresh=true
-if [[ -f "$CACHE_FILE" ]]; then
-  cache_ts=$(jq -r '.cached_at // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
-  now=$(date +%s)
-  if (( now - cache_ts < CACHE_TTL )); then
-    need_refresh=false
-  fi
+has_rate_limits=false
+if [[ -n "$five_pct_raw" ]] || [[ -n "$seven_pct_raw" ]]; then
+  has_rate_limits=true
 fi
 
-if $need_refresh; then
-  creds_json=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
-  token=$(echo "$creds_json" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null || true)
+five_pct=$(printf "%.0f" "${five_pct_raw:-0}" 2>/dev/null || echo "0")
+seven_pct=$(printf "%.0f" "${seven_pct_raw:-0}" 2>/dev/null || echo "0")
 
-  if [[ -n "$token" ]]; then
-    # API requires anthropic-beta header
-    resp=$(curl -s -H "Authorization: Bearer $token" \
-      -H "anthropic-beta: oauth-2025-04-20" \
-      "https://api.anthropic.com/api/oauth/usage" 2>/dev/null || true)
+# Format reset time from Unix epoch (macOS BSD date)
+format_reset() {
+  local epoch=$1 fmt=$2
+  if [[ -z "$epoch" ]] || [[ "$epoch" = "null" ]]; then echo "?"; return; fi
+  local result=$(TZ=Asia/Singapore date -r "$epoch" "+$fmt" 2>/dev/null || echo "?")
+  echo "$result" | sed 's/AM/am/g;s/PM/pm/g'
+}
 
-    # If error (429/401), try token refresh
-    if [[ -z "$resp" ]] || echo "$resp" | jq -e '.error' >/dev/null 2>&1; then
-      refresh_token=$(echo "$creds_json" | jq -r '.claudeAiOauth.refreshToken // empty' 2>/dev/null || true)
-      if [[ -n "$refresh_token" ]]; then
-        new_tokens=$(curl -s -X POST "https://console.anthropic.com/v1/oauth/token" \
-          -H "Content-Type: application/json" \
-          -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"$refresh_token\",\"client_id\":\"$CLIENT_ID\"}" \
-          2>/dev/null || true)
-
-        if [[ -n "$new_tokens" ]]; then
-          new_access=$(echo "$new_tokens" | jq -r '.access_token // empty' 2>/dev/null)
-          new_refresh=$(echo "$new_tokens" | jq -r '.refresh_token // empty' 2>/dev/null)
-
-          if [[ -n "$new_access" ]] && [[ -n "$new_refresh" ]]; then
-            # Update keychain with new tokens
-            updated=$(echo "$creds_json" | jq \
-              --arg at "$new_access" --arg rt "$new_refresh" \
-              '.claudeAiOauth.accessToken = $at | .claudeAiOauth.refreshToken = $rt')
-            security add-generic-password -U -s "Claude Code-credentials" -a "shuna" \
-              -w "$updated" 2>/dev/null
-
-            # Retry with new token
-            resp=$(curl -s -H "Authorization: Bearer $new_access" \
-              -H "anthropic-beta: oauth-2025-04-20" \
-              "https://api.anthropic.com/api/oauth/usage" 2>/dev/null || true)
-          fi
-        fi
-      fi
-    fi
-
-    # Cache response (success or failure) to prevent hammering
-    now=$(date +%s)
-    if [[ -n "$resp" ]] && echo "$resp" | jq -e '.five_hour' >/dev/null 2>&1; then
-      echo "$resp" | jq --argjson ts "$now" '. + {cached_at: $ts}' > "$CACHE_FILE" 2>/dev/null
-    else
-      # Write failure cache so we don't retry every refresh
-      echo "{\"cached_at\": $now, \"error\": true}" > "$CACHE_FILE" 2>/dev/null
-    fi
-  fi
-fi
-
-# ── Parse cached usage data ──────────────────────────────────────
-cache_error=false
-if [[ -f "$CACHE_FILE" ]]; then
-  if jq -e '.error' "$CACHE_FILE" >/dev/null 2>&1; then
-    cache_error=true
-    five_pct="N/A"; seven_pct="N/A"
-    five_reset="API unavailable"; seven_reset="API unavailable"
-  else
-    # Utilization is 0-100 (percentage)
-    five_pct=$(jq -r '.five_hour.utilization // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
-    seven_pct=$(jq -r '.seven_day.utilization // 0' "$CACHE_FILE" 2>/dev/null || echo "0")
-    five_pct=$(printf "%.0f" "$five_pct" 2>/dev/null || echo "0")
-    seven_pct=$(printf "%.0f" "$seven_pct" 2>/dev/null || echo "0")
-
-    # Format reset time (macOS BSD date)
-    format_reset() {
-      local raw=$1 fmt=$2
-      if [[ -z "$raw" ]] || [[ "$raw" = "null" ]]; then echo "?"; return; fi
-      # Strip fractional seconds and timezone offset, parse as UTC
-      local clean=$(echo "$raw" | sed 's/\.[0-9]*//;s/+00:00$//;s/Z$//')
-      local epoch=$(TZ=UTC date -jf "%Y-%m-%dT%H:%M:%S" "$clean" "+%s" 2>/dev/null || echo "")
-      if [[ -z "$epoch" ]]; then echo "?"; return; fi
-      local result=$(TZ=Asia/Singapore date -r "$epoch" "+$fmt" 2>/dev/null || echo "?")
-      echo "$result" | sed 's/AM/am/g;s/PM/pm/g'
-    }
-
-    five_reset_raw=$(jq -r '.five_hour.resets_at // .five_hour.reset_at // empty' "$CACHE_FILE" 2>/dev/null || true)
-    seven_reset_raw=$(jq -r '.seven_day.resets_at // .seven_day.reset_at // empty' "$CACHE_FILE" 2>/dev/null || true)
-
-    five_reset=$(format_reset "$five_reset_raw" "%-l%p")
-    seven_reset=$(format_reset "$seven_reset_raw" "%b %-d at %-l%p")
-  fi
-fi
+five_reset=$(format_reset "$five_reset_epoch" "%-l%p")
+seven_reset=$(format_reset "$seven_reset_epoch" "%b %-d at %-l%p")
 
 # ── Output 3 lines ──────────────────────────────────────────────
 ctx_c=$(color_for_pct "$ctx_pct")
@@ -173,15 +97,15 @@ ctx_c=$(color_for_pct "$ctx_pct")
 # Line 1: model │ context │ lines │ branch
 echo "${ctx_c}${model_display}${RESET} ${GRAY}│${RESET} ${ctx_c}${ctx_pct}%${RESET} ${GRAY}│${RESET} ${ctx_c}+${lines_added}/-${lines_removed}${RESET} ${GRAY}│${RESET} ${ctx_c}${ICON_BRANCH} ${branch}${RESET}"
 
-if $cache_error; then
-  # API unavailable - show grayed out
-  echo "${GRAY}${ICON_CLOCK} 5h  ▱▱▱▱▱▱▱▱▱▱  N/A  ${five_reset}${RESET}"
-  echo "${GRAY}${ICON_CAL} 7d  ▱▱▱▱▱▱▱▱▱▱  N/A  ${seven_reset}${RESET}"
+if ! $has_rate_limits; then
+  # Rate limits not yet available (before first API response)
+  echo "${GRAY}${ICON_CLOCK} 5h  ▱▱▱▱▱▱▱▱▱▱  --  waiting for data${RESET}"
+  echo "${GRAY}${ICON_CAL} 7d  ▱▱▱▱▱▱▱▱▱▱  --  waiting for data${RESET}"
 else
   five_c=$(color_for_pct "$five_pct")
   seven_c=$(color_for_pct "$seven_pct")
   # Line 2: 5-hour rate limit
-  echo "${five_c}${ICON_CLOCK} 5h  $(progress_bar "$five_pct")  ${five_pct}%${RESET}  Resets ${five_reset} (Asia/Singapore)"
+  echo "${five_c}${ICON_CLOCK} 5h  $(progress_bar "$five_pct")  ${five_pct}%${RESET}  Resets ${five_reset} (SGT)"
   # Line 3: 7-day rate limit
-  echo "${seven_c}${ICON_CAL} 7d  $(progress_bar "$seven_pct")  ${seven_pct}%${RESET}  Resets ${seven_reset} (Asia/Singapore)"
+  echo "${seven_c}${ICON_CAL} 7d  $(progress_bar "$seven_pct")  ${seven_pct}%${RESET}  Resets ${seven_reset} (SGT)"
 fi
