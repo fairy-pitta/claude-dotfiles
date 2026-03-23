@@ -128,3 +128,4 @@
 - **watcher依存の完全性チェック** `[新観点 from PR#586]` — watch内の条件分岐で参照している値（例: `props.rows.length`）がwatch対象に含まれているか確認する。外部要因による値変化時に条件が再評価されないバグを防ぐ。watch内でifに書いた値はwatch対象かチェックする習慣をつける。
 - **UIコンポーネント名とメッセージ定数の整合性** `[新観点 from PR#642]` — アイコン名やUI要素名をメッセージ定数に含める場合、実際に使用しているコンポーネント（HeartIcon vs StarIcon等）と照合する。乖離があるとユーザーに誤った案内をしてしまう。
 - **watch immediate+once の組み合わせ禁止** `[新観点 from PR#654]` — Vue 3.5では `{ immediate: true, once: true }` の組み合わせで、immediateの即時実行が「最初のコールバック実行」として数えられwatcherが停止する。非同期データ到着を待つwatchでは `once: true` を使わず、コールバック内で条件を満たしたら手動でwatcherを停止する（`watchEffect` + `stop()` パターン等）。
+- **catchブロックで全エラーを汎用メッセージに潰していないか** `[新観点 from PR#689]` — isAppError(e) ? e.message : FALLBACK パターンで、バックエンドが返す具体的なエラーメッセージをユーザーに届けること。

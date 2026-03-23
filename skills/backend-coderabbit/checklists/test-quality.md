@@ -94,3 +94,8 @@
 - **テストヘルパーの戻り値型をdataclassで具体化** `[新観点 from PR#654, 更新 PR#659]` — `build_mock_*` 系ヘルパーで `type()` による動的クラス生成や `Protocol` ではなく `@dataclass(frozen=True, slots=True)` を使用する。frozen dataclassは不変性・型安全性・IDE補完を同時に担保し、Protocolより堅牢。
 - **ValidationError.detailsのcauseフィールド検証** `[新観点 from PR#654]` — `ValidationError` を返すテストでは `str(error)` のメッセージだけでなく `error.details["cause"]` まで検証する。原因文字列が消えてもメッセージ検証だけでは検出できない。
 - **例外文言への依存テスト** `[新観点 from PR#659]` — テストのアサーションが内部実装の文言（例外メッセージ、ログ文字列等）に依存していないか確認する。定数やエラーコードでアサーションすべき。
+- **テストのassertで複数値を許容していないか** `[新観点 from PR#689]` — `assert x in (A, B)` のような非決定論的なテストは、mock side_effectで特定の例外を発生させ期待値を1つに固定すること。
+- **モック定義だけして呼び出し検証していないテストがないか** `[新観点 from PR#689]` — vi.fn()でmockを定義したら、assert_called / toHaveBeenCalled で呼び出しを検証すること。
+- **Viewテストで UseCase引数のDTO検証をしているか** `[新観点 from PR#689]` — execute.assert_called_once() だけでなく、call_argsからDTOを取得してフィールド値を検証すること。
+- **テスト内のエラーメッセージ文字列リテラル→定数参照** `[新観点 from PR#689]` — NotFoundError("文字列")ではなくNotFoundError(Msg.CONSTANT)を使うこと。
+- **"key" in response.dataだけの弱いassertion→値まで検証** `[新観点 from PR#689]` — response.data["error"]の値も検証すること。

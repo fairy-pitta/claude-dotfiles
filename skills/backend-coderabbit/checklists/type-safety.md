@@ -74,3 +74,5 @@
 - **docstringと実装の戻り値型一致** `[新観点 from PR#624]` — 関数のdocstringに記載した戻り値型が実装と一致しているか確認する。特にResult型でエラーバリアントを追加した場合、docstringも更新する。戻り値パターンを変更したらdocstringも同時に修正する。
 - **エラー型とHTTPステータスコードのマッピング** `[新観点 from PR#624]` — `ApiResponse.error()` のマッピングテーブルに存在しないエラー型（例: `ValueError`）を使っていないか確認する。`ValidationError` → 400、`PermissionDeniedError` → 403 等の対応を意識する。
 - **Factory戻り値の型注釈** `[新観点 from PR#624]` — `UserFactory()` の戻り値を `UserFactory` 型で注釈しない。Factoryは生成物の型（`User`）を返す。
+- **except Exception でエラーを潰していないか** `[新観点 from PR#689]` — Result型を返すusecaseで catch all が Sentry 検知を妨げるケース。ValidationError等の特定例外のみcatchし、DatabaseError等はバブルアップさせること。
+- **Feature 間の直接依存がないか** `[新観点 from PR#689]` — 通常Feature間でconcrete型を直接importしていないか。Protocol/shared経由になっているか確認。
