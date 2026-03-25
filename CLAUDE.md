@@ -54,6 +54,7 @@ def test_it_works() -> None: ...
 - Use feature branches: `feature/<name>`, `fix/<name>`, `refactor/<name>`
 - Use worktrees for parallel development when appropriate
 - Clean up worktrees after merging
+- always check the branch you are commiting to. 
 
 ## Code Quality
 
