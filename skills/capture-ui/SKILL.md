@@ -1,11 +1,11 @@
 ---
 name: capture-ui
-description: Detect UI changes, take screenshots from the local dev server, and upload them to the GitHub PR.
+description: プロジェクトのVRTスナップショットから差分PNGを検出し、GitHub PRにアップロードする。VRTが未更新なら自動updateする。
 ---
 
-# Capture UI Screenshots
+# Capture UI (VRT-based)
 
-Detect UI file changes on the current branch, take screenshots from the local dev server using Playwright, and upload them to the GitHub PR as a comment.
+プロジェクトの既存VRT (Visual Regression Testing) を活用してUI差分PNGをPRに貼る。
 
 Context: $ARGUMENTS
 
@@ -22,203 +22,95 @@ gh pr view --json url,number -q '"\(.url)\t\(.number)"'
 
 If no PR exists for the current branch, report and exit.
 
-### Step 2: Detect UI changes
+### Step 2: VRTの存在確認
+
+プロジェクトにVRTが存在するか確認する。以下を順にチェック:
+
+```bash
+# Playwright VRT snapshots
+find . -type d -name "*.spec.ts-snapshots" -o -name "*.spec.js-snapshots" | head -5
+
+# Storycap / reg-suit snapshots
+ls -d .reg/ __screenshots__/ 2>/dev/null
+
+# Generic snapshot dirs
+find . -type d -name "__snapshots__" -path "*/e2e/*" -o -name "__snapshots__" -path "*/visual/*" | head -5
+```
+
+また、VRT実行コマンドを特定する:
+
+```bash
+# package.json の scripts から VRT 関連コマンドを探す
+grep -E '"(vrt|visual|snapshot|screenshot)' package.json frontend/package.json 2>/dev/null
+
+# playwright.config で toHaveScreenshot 設定を探す
+grep -rl "toHaveScreenshot\|toMatchSnapshot\|expect.*screenshot" --include="*.ts" --include="*.js" -l | head -5
+```
+
+**VRTが見つからない場合** → "VRTが存在しないためスキップします" と報告して終了。
+
+**VRT実行コマンドの特定:**
+- `package.json` に `vrt` や `test:visual` 等のスクリプトがあればそれを使う
+- なければ Playwright の場合: `npx playwright test --grep visual` や VRT テストファイルを直接指定
+- コマンドが特定できない場合は報告して終了
+
+### Step 3: 差分PNGの確認
+
+今回の変更でVRTスナップショットに差分が入っているか確認する:
 
 ```bash
 BASE=$(git rev-parse --verify origin/dev >/dev/null 2>&1 && echo "dev" || echo "main")
-git diff "$BASE"...HEAD --name-only | grep -E '\.(vue|tsx|jsx|css|scss|sass|html|svelte)$'
+git diff "$BASE"...HEAD --name-only | grep -iE '\.(png|jpg|jpeg)$' | grep -iE 'snapshot|screenshot|visual|vrt|__image_snapshots__'
 ```
 
-If no UI-related file changes → report "UI変更なし — スクショをスキップします" and exit.
+また、未コミットの差分も確認:
 
-### Step 3: Detect dev server
-
-Check common local dev server ports:
 ```bash
-for port in 5173 3000 8080 4173; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$port" 2>/dev/null)
-  [ "$code" = "200" ] && echo "$port" && break
-done
+git status --porcelain | grep -iE '\.(png|jpg|jpeg)$' | grep -iE 'snapshot|screenshot|visual|vrt|__image_snapshots__'
 ```
 
-Use the first port that returns HTTP 200.
+### Step 4: 差分がない場合 → VRT update
 
-If no dev server is running → report "dev serverが起動していないためスクショをスキップします" and exit.
-
-### Step 4: Infer target pages
-
-From the changed file paths, infer which pages/routes to screenshot:
-
-| Changed file pattern | Likely route |
-|---------------------|-------------|
-| `pages/users/*`, `views/users/*` | `/users` |
-| `components/Login.*` | `/login` |
-| `layouts/Default.*` | `/` (top page) |
-
-- If route inference is unclear, screenshot the top page (`/`)
-- Capture at most 5 pages to keep the process fast
-
-### Step 5: Capture screenshots with Playwright
-
-Create a temp working directory with Playwright installed, write a capture script, and execute it.
-
-**IMPORTANT**: Playwright must be resolved from the same directory as the script. Always write the script into the temp directory where `playwright` is installed.
+差分PNGが見つからない場合、スナップショットが未更新の可能性がある。VRT updateを実行する:
 
 ```bash
-WORK_DIR=$(mktemp -d)
-SCREENSHOT_DIR=$(mktemp -d)
-AUTH_STATE="$HOME/.claude/capture-ui-auth.json"
+# 例: Playwright の場合
+npx playwright test --update-snapshots
 
-# Install playwright in temp dir
-cd "$WORK_DIR" && npm init -y --silent && npm install playwright --silent
-
-# Write capture script into the same directory
-cat > "$WORK_DIR/capture.mjs" << 'SCRIPT'
-import { chromium } from 'playwright';
-import { existsSync, readFileSync } from 'fs';
-
-const [port, dir, authFile, ...routes] = process.argv.slice(2);
-const baseUrl = `http://localhost:${port}`;
-
-// Load saved auth state if available
-const contextOptions = { viewport: { width: 1280, height: 720 } };
-if (existsSync(authFile)) {
-  contextOptions.storageState = authFile;
-  console.log('AUTH: loaded saved session from ' + authFile);
-}
-
-const browser = await chromium.launch();
-const context = await browser.newContext(contextOptions);
-const page = await context.newPage();
-
-// Check if authentication is needed
-await page.goto(baseUrl + routes[0], { waitUntil: 'networkidle', timeout: 15000 });
-const currentUrl = page.url();
-const isLoginPage = currentUrl.includes('/login') || currentUrl.includes('/signin') || currentUrl.includes('/auth');
-
-if (isLoginPage) {
-  console.log('AUTH: login page detected at ' + currentUrl);
-
-  // Try auto-login with env vars
-  const email = process.env.CAPTURE_UI_EMAIL;
-  const password = process.env.CAPTURE_UI_PASSWORD;
-
-  if (email && password) {
-    console.log('AUTH: attempting auto-login with CAPTURE_UI_EMAIL...');
-
-    // Find and fill email/username field
-    const emailField = await page.$('input[type="email"], input[name="email"], input[name="username"], input[id="email"], input[id="username"]');
-    if (emailField) await emailField.fill(email);
-
-    // Find and fill password field
-    const passField = await page.$('input[type="password"], input[name="password"], input[id="password"]');
-    if (passField) await passField.fill(password);
-
-    // Submit
-    const submitBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("ログイン"), button:has-text("Log in"), button:has-text("Sign in")');
-    if (submitBtn) await submitBtn.click();
-
-    // Wait for navigation after login
-    await page.waitForURL(url => !url.toString().includes('/login') && !url.toString().includes('/signin') && !url.toString().includes('/auth'), { timeout: 10000 }).catch(() => {});
-    await page.waitForLoadState('networkidle');
-
-    const afterUrl = page.url();
-    if (!afterUrl.includes('/login') && !afterUrl.includes('/signin') && !afterUrl.includes('/auth')) {
-      console.log('AUTH: login successful, saving session...');
-      await context.storageState({ path: authFile });
-    } else {
-      console.error('AUTH: login failed — still on login page: ' + afterUrl);
-      console.error('AUTH: set CAPTURE_UI_EMAIL and CAPTURE_UI_PASSWORD env vars, or run manual login setup');
-      await browser.close();
-      process.exit(1);
-    }
-  } else {
-    console.error('AUTH: login required but no credentials provided');
-    console.error('AUTH: set CAPTURE_UI_EMAIL and CAPTURE_UI_PASSWORD env vars');
-    console.error('AUTH: or run: node capture.mjs <port> <dir> <authFile> --setup');
-    await browser.close();
-    process.exit(1);
-  }
-}
-
-// Interactive login setup mode (--setup flag)
-if (routes[0] === '--setup') {
-  console.log('AUTH: opening browser for manual login...');
-  const visibleBrowser = await chromium.launch({ headless: false });
-  const visibleContext = await visibleBrowser.newContext({ viewport: { width: 1280, height: 720 } });
-  const visiblePage = await visibleContext.newPage();
-  await visiblePage.goto(baseUrl, { waitUntil: 'networkidle' });
-  console.log('AUTH: please log in manually in the browser window...');
-  console.log('AUTH: press Enter in terminal when done.');
-  await new Promise(resolve => process.stdin.once('data', resolve));
-  await visibleContext.storageState({ path: authFile });
-  console.log('AUTH: session saved to ' + authFile);
-  await visibleBrowser.close();
-  process.exit(0);
-}
-
-// Capture screenshots
-for (const route of routes) {
-  try {
-    await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle', timeout: 15000 });
-
-    // Check if we got redirected to login (session expired)
-    if (page.url().includes('/login') || page.url().includes('/signin')) {
-      console.error(`SKIP: ${route} — redirected to login (session expired)`);
-      continue;
-    }
-
-    const name = route.replace(/\//g, '_').replace(/^_/, '') || 'top';
-    await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
-    console.log(`OK: ${route} -> ${name}.png`);
-  } catch (e) {
-    console.error(`SKIP: ${route} — ${e.message}`);
-  }
-}
-
-await browser.close();
-SCRIPT
-
-# Run capture
-node "$WORK_DIR/capture.mjs" "${PORT}" "${SCREENSHOT_DIR}" "${AUTH_STATE}" "/" "/users"
+# 例: package.json にスクリプトがある場合
+npm run vrt:update
+# or
+pnpm run vrt:update
 ```
 
-Replace `${PORT}` with detected port. Pass target routes as additional arguments.
+**Step 2 で特定したコマンドに `--update-snapshots` フラグを付けて実行する。**
 
-#### Authentication
-
-The script handles login-required apps automatically:
-
-1. **Saved session exists** (`~/.claude/capture-ui-auth.json`): Reuses cookies/localStorage from previous login. No re-authentication needed.
-
-2. **No saved session + env vars set**: Auto-fills login form using:
-   - `CAPTURE_UI_EMAIL` — email or username
-   - `CAPTURE_UI_PASSWORD` — password
-   Saves the session after successful login for future runs.
-
-3. **No saved session + no env vars**: Reports auth failure and exits. Instruct the user to either:
-   - Set `CAPTURE_UI_EMAIL` and `CAPTURE_UI_PASSWORD` environment variables
-   - Or run manual setup: `node capture.mjs <port> <dir> <authFile> --setup` (opens a visible browser for manual login, saves session)
-
-4. **Session expired** (redirected to login during capture): Skips that page and reports it.
-
-**Security note**: `~/.claude/capture-ui-auth.json` contains session cookies. It is gitignored and local-only. Never commit this file.
-
-### Step 6: Upload screenshots to PR
-
-Use `gh attach` (gh extension) to upload images and post a PR comment with embedded screenshots:
+update後、再度差分を確認:
 
 ```bash
+git status --porcelain | grep -iE '\.(png|jpg|jpeg)$'
+```
+
+それでも差分がない場合 → "UI変更なし — スクショをスキップします" と報告して終了。
+
+### Step 5: 差分PNGをPRにアップロード
+
+差分のあるPNGファイルをPRコメントとして投稿する。
+
+```bash
+# 差分PNGのパスを収集（git diff + unstaged の両方）
+DIFF_PNGS=$(git diff "$BASE"...HEAD --name-only | grep -iE '\.(png)$'; git diff --name-only | grep -iE '\.(png)$')
+
 # Build image args
 IMAGE_ARGS=""
-for img in "$SCREENSHOT_DIR"/*.png; do
+for img in $DIFF_PNGS; do
   [ -f "$img" ] || continue
   IMAGE_ARGS+=" --image $img"
 done
 
-# Upload and comment (--release mode uses GitHub Releases, no browser needed)
+# Upload and comment
 gh attach --issue "$PR_NUMBER" $IMAGE_ARGS --release \
-  --body "## UI Screenshots (auto-captured)"
+  --body "## UI Screenshots (VRT diff)"
 ```
 
 If `gh attach` is not installed, install it first:
@@ -226,31 +118,21 @@ If `gh attach` is not installed, install it first:
 gh extension install atani/gh-attach
 ```
 
-Flags:
-- `--release`: uploads via GitHub Releases (no browser automation needed)
-- `--width 800`: default image width (adjustable)
-- `--image`: repeatable, one per screenshot file
-
-### Step 7: Cleanup and report
-
-```bash
-rm -rf "$WORK_DIR" "$SCREENSHOT_DIR"
-```
+### Step 6: Report
 
 ```
-=== UI Screenshots ===
-Pages captured: <list of routes>
+=== UI Screenshots (VRT) ===
+VRT: detected (<type>)
+Snapshots updated: yes / no (already up to date)
 Screenshots: <N>枚
 PR comment: posted ✓
-Auth: <saved session / auto-login / manual setup needed>
 ```
 
 ## Error Handling
 
-- If Playwright is not installed → the script installs it automatically in a temp dir
-- If dev server is not running → report and exit (do not block)
-- If login is required and no credentials → report and instruct user to set env vars or run --setup
-- If screenshot capture fails for a specific page → skip that page, continue with others
-- If `gh attach` is not installed → install with `gh extension install atani/gh-attach` and retry
-- If upload to PR fails → Read the screenshots locally with the Read tool to view them inline, and report paths to the user
+- VRTが存在しない → report and exit (do not block)
+- VRT update コマンドが特定できない → report and exit
+- VRT update が失敗 → エラー内容を報告して終了（テスト失敗はブロックしない）
+- `gh attach` is not installed → install with `gh extension install atani/gh-attach` and retry
+- Upload fails → Read the screenshots locally with the Read tool to view them inline, and report paths to the user
 - Never block PR creation — this skill is always best-effort
