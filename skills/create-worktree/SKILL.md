@@ -45,9 +45,14 @@ Create an isolated git worktree for the specified branch: $ARGUMENTS
    npm install 2>/dev/null || yarn install 2>/dev/null || true
    ```
 
-5. **Report location**
-   - Print the worktree path
+5. **Report location and prompt directory change**
+   - Print the worktree absolute path
    - Confirm setup completion
+   - Prompt the user to change directory:
+     ```
+     Worktreeの準備ができました。以下を実行してディレクトリを移動してください:
+     !cd <worktree-absolute-path>
+     ```
 
 ## Reuse Existing
 
