@@ -72,6 +72,8 @@
 - **nullable引数の遷移テスト不足** `[新観点 from PR#659]` — composable テストで、引数が nullable な場合に `null → 有効値` への遷移パスをテストしているか確認する。特に TanStack Query の enabled 切り替えが絡む場合は必須。
 - **vi.useFakeTimersのtry/finally保護** `[新観点 from PR#674]` — `vi.useFakeTimers()` を使うテストで `vi.useRealTimers()` がテスト末尾にしかない場合、途中の `await` や `expect` で失敗すると後続テストまでフェイクタイマーのままになる。`try/finally` で `vi.useRealTimers()` を保護すること。
 - **ガードテストでのAPI未呼出アサーション** `[新観点 from PR#674]` — バリデーションガード（companyId検証等）のテストで、エラーメッセージの表示だけでなく「APIが呼ばれていないこと」も検証する。callCountやスパイで送信回数0をアサートしないと、ガードをバイパスしてAPIを叩いていても検出できない。
+- **v-if要素の非存在検証** `[新観点 from PR#736]` — `v-if`でDOM除去される要素の非存在検証に`not.toBeVisible()`ではなく`toHaveCount(0)`を使用しているか。`v-if`はDOM除去、`v-show`はCSS非表示であり、アサーション選択を使い分ける必要がある。`not.toBeVisible()`は動作するが意図が不正確。
+- **バリデーションテストの網羅性** `[新観点 from PR#736]` — テスト名が示す範囲（例:「全必須項目のバリデーション」）と実際の検証範囲が一致しているか。一部の項目のみ検証して残りを省略していないか確認する。
 
 ### Accounting（会計固有ルール）
 
