@@ -241,7 +241,7 @@ prompt: |
   1. プロジェクトの CLAUDE.md を読む
   2. `.claude/design.md` を読む
   3. `.claude/research.md` を読む
-  4. `references/design-review-points.md` を読む（設計段階で確認すべきレビュー観点）
+  4. `references/review-points/` 配下の全ファイルを読む（設計段階で確認すべきレビュー観点）
   5. 以下の基準で評価する:
 
   ### 設計品質
@@ -265,23 +265,15 @@ prompt: |
   - 受け入れ条件が全て検証可能か
 
   ### レビュー観点による設計チェック（design-review-points.md 準拠）
-  変更対象がbackend/frontendのどちらかに応じて、該当する観点を適用する:
-
-  **Backend変更がある場合:**
-  - アーキテクチャ: Feature間依存・Domain層純粋性・Application層ORM非依存・Transaction配置
-  - DB/パフォーマンス: N+1回避・SELECT*禁止・インデックス設計
-  - 型安全: Result型採用・Enum必須・バリデーション順序
-  - セキュリティ: permission_classes明示・認可バイパス排除
-  - エラーメッセージ: 定数化・ユーザー向け/内部向け分離
-
-  **Frontend変更がある場合:**
-  - FSD: 依存方向・index.ts経由・features間import禁止・昇格ルール
-  - 型安全: any禁止・enum禁止・型アサーション禁止・toEntity変換
-  - 状態管理: 3分類・Pinia禁止・readonly保護・バケツリレー防止
-  - エラー: console禁止・4層パイプライン・Zodバリデーション
-
-  **テスト設計:**
-  - 命名規約・正常系+異常系網羅・境界値・N+1検証・認可テスト・副作用否定テスト
+  design-review-points.md の各カテゴリを適用する:
+  - アーキテクチャ: 依存方向・レイヤー責務境界・Domain層純粋性・既存パターン整合
+  - DB/パフォーマンス: N+1回避・必要カラム限定・インデックス設計・マイグレーション安全性
+  - バリデーション/エラー: 実行順序・不変条件・エラーメッセージ定数化・ロールバック
+  - セキュリティ: 認可明示・バイパス排除・リソース所有権検証
+  - 型安全: 具体型使用・Enum/定数・型アサーション回避・API境界変換
+  - 状態管理: 状態分類・readonly公開・ライフサイクル管理
+  - テスト: 命名・正常系+異常系・境界値・副作用否定・認可テスト
+  - DRY/組織: 重複防止・単一責務・命名明確性・依存追加正当性
 
   プランが良ければ: "LGTM" とだけ返す
   問題があれば: 具体的な改善提案を簡潔にリストする
@@ -294,7 +286,7 @@ CLAUDE_MD="$(pwd)/CLAUDE.md"
 
 PROMPT=$(mktemp /tmp/design-review.XXXXXX)
 
-DESIGN_REVIEW_POINTS="$HOME/.claude/skills/plan-impl/references/design-review-points.md"
+REVIEW_POINTS_DIR="$HOME/.claude/skills/plan-impl/references/review-points"
 
 echo "# Project Rules" > "$PROMPT"
 [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
@@ -302,8 +294,8 @@ echo -e "\n---\n# Codebase Research\n" >> "$PROMPT"
 cat .claude/research.md >> "$PROMPT"
 echo -e "\n---\n# Design Document to Review\n" >> "$PROMPT"
 cat .claude/design.md >> "$PROMPT"
-echo -e "\n---\n# Design Review Points (from review skills)\n" >> "$PROMPT"
-[ -f "$DESIGN_REVIEW_POINTS" ] && cat "$DESIGN_REVIEW_POINTS" >> "$PROMPT"
+echo -e "\n---\n# Design Review Points\n" >> "$PROMPT"
+for f in "$REVIEW_POINTS_DIR"/*.md; do [ -f "$f" ] && cat "$f" >> "$PROMPT" && echo -e "\n" >> "$PROMPT"; done
 echo -e "\n---\n" >> "$PROMPT"
 cat << 'REVIEW_INSTRUCTIONS' >> "$PROMPT"
 You are reviewing a design document before implementation begins.
