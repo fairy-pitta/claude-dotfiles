@@ -241,7 +241,8 @@ prompt: |
   1. プロジェクトの CLAUDE.md を読む
   2. `.claude/design.md` を読む
   3. `.claude/research.md` を読む
-  4. 以下の基準で評価する:
+  4. `references/design-review-points.md` を読む（設計段階で確認すべきレビュー観点）
+  5. 以下の基準で評価する:
 
   ### 設計品質
   - 背景・方針が明確で、なぜこのアプローチを選んだか説明されているか
@@ -263,6 +264,25 @@ prompt: |
   - 変更に対応するユニットテストが計画されているか
   - 受け入れ条件が全て検証可能か
 
+  ### レビュー観点による設計チェック（design-review-points.md 準拠）
+  変更対象がbackend/frontendのどちらかに応じて、該当する観点を適用する:
+
+  **Backend変更がある場合:**
+  - アーキテクチャ: Feature間依存・Domain層純粋性・Application層ORM非依存・Transaction配置
+  - DB/パフォーマンス: N+1回避・SELECT*禁止・インデックス設計
+  - 型安全: Result型採用・Enum必須・バリデーション順序
+  - セキュリティ: permission_classes明示・認可バイパス排除
+  - エラーメッセージ: 定数化・ユーザー向け/内部向け分離
+
+  **Frontend変更がある場合:**
+  - FSD: 依存方向・index.ts経由・features間import禁止・昇格ルール
+  - 型安全: any禁止・enum禁止・型アサーション禁止・toEntity変換
+  - 状態管理: 3分類・Pinia禁止・readonly保護・バケツリレー防止
+  - エラー: console禁止・4層パイプライン・Zodバリデーション
+
+  **テスト設計:**
+  - 命名規約・正常系+異常系網羅・境界値・N+1検証・認可テスト・副作用否定テスト
+
   プランが良ければ: "LGTM" とだけ返す
   問題があれば: 具体的な改善提案を簡潔にリストする
 ```
@@ -274,12 +294,16 @@ CLAUDE_MD="$(pwd)/CLAUDE.md"
 
 PROMPT=$(mktemp /tmp/design-review.XXXXXX)
 
+DESIGN_REVIEW_POINTS="$HOME/.claude/skills/plan-impl/references/design-review-points.md"
+
 echo "# Project Rules" > "$PROMPT"
 [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
 echo -e "\n---\n# Codebase Research\n" >> "$PROMPT"
 cat .claude/research.md >> "$PROMPT"
 echo -e "\n---\n# Design Document to Review\n" >> "$PROMPT"
 cat .claude/design.md >> "$PROMPT"
+echo -e "\n---\n# Design Review Points (from review skills)\n" >> "$PROMPT"
+[ -f "$DESIGN_REVIEW_POINTS" ] && cat "$DESIGN_REVIEW_POINTS" >> "$PROMPT"
 echo -e "\n---\n" >> "$PROMPT"
 cat << 'REVIEW_INSTRUCTIONS' >> "$PROMPT"
 You are reviewing a design document before implementation begins.
@@ -305,6 +329,12 @@ Evaluate against these criteria:
 ## Quality Checklist (Submission readiness)
 11. Are unit tests planned for all changes?
 12. Are all acceptance criteria verifiable?
+
+## Design Review Points (from review skills)
+Apply the relevant design-phase review points from the attached design-review-points.md:
+- Backend: architecture (dependency direction, domain purity, transaction placement), DB/perf (N+1, index), type safety (Result, Enum), security (permissions, authz bypass), error messages (constants)
+- Frontend: FSD (dependency direction, index.ts, features isolation), type safety (no any/enum/as), state management (3-classification, no Pinia, readonly), error handling (no console, 4-layer pipeline, Zod)
+- Tests: naming, normal+error coverage, boundary values, N+1 assertions, authz tests, side-effect negation
 
 If the design is solid, respond with exactly: LGTM
 If there are issues, list them concisely with specific suggestions.
