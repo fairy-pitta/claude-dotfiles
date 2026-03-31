@@ -226,24 +226,62 @@ codex の回答をユーザーに提示し、議論を続ける。
 7. **リスクと対策（Risks）**: 破壊的変更、パフォーマンス、マイグレーションのリスク
 8. **品質チェックリスト（Quality Checklist）**: `references/quality-checklist.md` を埋める
 
-### 4-2. 設計書レビュー
+### 4-2. 設計書レビュー（並列エージェント）
+
+**8つの観点を並列でレビューし、結果を統合する。**
 
 #### 4-2-A: Claude Code Agent（デフォルト）
 
-Agent tool で起動する:
+以下のエージェントを **同一メッセージで並列起動** する。
+各エージェントは担当する `references/review-points/<category>.md` を読み、その観点で設計書を評価する。
+
+**共通プロンプトテンプレート（各エージェントに適用）:**
 
 ```
-description: "design doc review agent"
+description: "design review: <category>"
 prompt: |
-  あなたは設計書レビューのサブエージェントです。
+  あなたは設計書レビューのサブエージェントです。担当観点: <category>
 
   ## タスク
   1. プロジェクトの CLAUDE.md を読む
   2. `.claude/design.md` を読む
   3. `.claude/research.md` を読む
-  4. `references/review-points/` 配下の全ファイルを読む（設計段階で確認すべきレビュー観点）
-  5. 以下の基準で評価する:
+  4. `$HOME/.claude/skills/plan-impl/references/review-points/<category>.md` を読む
 
+  ## 評価基準
+  担当する観点ファイルに記載された各チェック項目に照らして設計書を評価する。
+
+  ## 出力形式
+  問題なし: "LGTM" とだけ返す
+  問題あり: 以下の形式で簡潔にリストする
+    - [<category>] <指摘内容>。<改善提案>。
+```
+
+**起動する8エージェント:**
+
+| # | description | category ファイル |
+|---|-------------|-----------------|
+| 1 | `design review: architecture` | `architecture.md` |
+| 2 | `design review: db-performance` | `db-performance.md` |
+| 3 | `design review: validation-error` | `validation-error.md` |
+| 4 | `design review: security` | `security.md` |
+| 5 | `design review: type-safety` | `type-safety.md` |
+| 6 | `design review: state-management` | `state-management.md` |
+| 7 | `design review: test-design` | `test-design.md` |
+| 8 | `design review: dry-organization` | `dry-organization.md` |
+
+加えて、品質チェックリスト用のエージェントを **同時に** 起動する:
+
+```
+description: "design review: quality checklist"
+prompt: |
+  あなたは設計書の品質チェックリスト検証エージェントです。
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. `.claude/design.md` を読む
+
+  ## 評価基準
   ### 設計品質
   - 背景・方針が明確で、なぜこのアプローチを選んだか説明されているか
   - 変更ファイル一覧が網羅的で、漏れがないか
@@ -264,81 +302,72 @@ prompt: |
   - 変更に対応するユニットテストが計画されているか
   - 受け入れ条件が全て検証可能か
 
-  ### レビュー観点による設計チェック（design-review-points.md 準拠）
-  design-review-points.md の各カテゴリを適用する:
-  - アーキテクチャ: 依存方向・レイヤー責務境界・Domain層純粋性・既存パターン整合
-  - DB/パフォーマンス: N+1回避・必要カラム限定・インデックス設計・マイグレーション安全性
-  - バリデーション/エラー: 実行順序・不変条件・エラーメッセージ定数化・ロールバック
-  - セキュリティ: 認可明示・バイパス排除・リソース所有権検証
-  - 型安全: 具体型使用・Enum/定数・型アサーション回避・API境界変換
-  - 状態管理: 状態分類・readonly公開・ライフサイクル管理
-  - テスト: 命名・正常系+異常系・境界値・副作用否定・認可テスト
-  - DRY/組織: 重複防止・単一責務・命名明確性・依存追加正当性
-
-  プランが良ければ: "LGTM" とだけ返す
-  問題があれば: 具体的な改善提案を簡潔にリストする
+  問題なし: "LGTM" とだけ返す
+  問題あり: 具体的な改善提案を簡潔にリストする
 ```
+
+**合計 9 エージェントを並列起動。**
 
 #### 4-2-B: codex CLI（--codex 指定時）
 
 ```bash
 CLAUDE_MD="$(pwd)/CLAUDE.md"
-
-PROMPT=$(mktemp /tmp/design-review.XXXXXX)
-
 REVIEW_POINTS_DIR="$HOME/.claude/skills/plan-impl/references/review-points"
 
-echo "# Project Rules" > "$PROMPT"
-[ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
-echo -e "\n---\n# Codebase Research\n" >> "$PROMPT"
-cat .claude/research.md >> "$PROMPT"
-echo -e "\n---\n# Design Document to Review\n" >> "$PROMPT"
-cat .claude/design.md >> "$PROMPT"
-echo -e "\n---\n# Design Review Points\n" >> "$PROMPT"
-for f in "$REVIEW_POINTS_DIR"/*.md; do [ -f "$f" ] && cat "$f" >> "$PROMPT" && echo -e "\n" >> "$PROMPT"; done
-echo -e "\n---\n" >> "$PROMPT"
-cat << 'REVIEW_INSTRUCTIONS' >> "$PROMPT"
-You are reviewing a design document before implementation begins.
+for CATEGORY_FILE in "$REVIEW_POINTS_DIR"/*.md; do
+  CATEGORY=$(basename "$CATEGORY_FILE" .md)
+  PROMPT=$(mktemp /tmp/design-review-${CATEGORY}.XXXXXX)
 
-Evaluate against these criteria:
+  echo "# Project Rules" > "$PROMPT"
+  [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD" >> "$PROMPT"
+  echo -e "\n---\n# Design Document\n" >> "$PROMPT"
+  cat .claude/design.md >> "$PROMPT"
+  echo -e "\n---\n# Codebase Research\n" >> "$PROMPT"
+  cat .claude/research.md >> "$PROMPT"
+  echo -e "\n---\n# Review Points: ${CATEGORY}\n" >> "$PROMPT"
+  cat "$CATEGORY_FILE" >> "$PROMPT"
+  echo -e "\n---\n" >> "$PROMPT"
+  cat << REVIEW_INSTRUCTIONS >> "$PROMPT"
+You are reviewing a design document. Your focus area: ${CATEGORY}.
 
-## Design Quality
-1. Is the background clear and the approach well-justified?
-2. Is the file change list comprehensive with no omissions?
-3. Are acceptance criteria written in testable form?
-4. Does the design align with existing project patterns?
+Evaluate the design against each check item in the review points above.
 
-## Quality Checklist (Pre-implementation)
-5. Does the design doc include: background, approach, changed files, acceptance criteria?
-6. Is the domain folder structure explicitly documented?
-
-## Quality Checklist (Implementation readiness)
-7. Are planned function/variable names self-explanatory?
-8. Does each planned function have a single responsibility?
-9. Is the design free of 3+ copy-paste risk areas?
-10. Are reasons for new dependency additions explained?
-
-## Quality Checklist (Submission readiness)
-11. Are unit tests planned for all changes?
-12. Are all acceptance criteria verifiable?
-
-## Design Review Points (from review skills)
-Apply the relevant design-phase review points from the attached design-review-points.md:
-- Backend: architecture (dependency direction, domain purity, transaction placement), DB/perf (N+1, index), type safety (Result, Enum), security (permissions, authz bypass), error messages (constants)
-- Frontend: FSD (dependency direction, index.ts, features isolation), type safety (no any/enum/as), state management (3-classification, no Pinia, readonly), error handling (no console, 4-layer pipeline, Zod)
-- Tests: naming, normal+error coverage, boundary values, N+1 assertions, authz tests, side-effect negation
-
-If the design is solid, respond with exactly: LGTM
-If there are issues, list them concisely with specific suggestions.
+If the design is solid for this category, respond with exactly: LGTM
+If there are issues, list them concisely:
+  - [${CATEGORY}] <issue>. <suggestion>.
 REVIEW_INSTRUCTIONS
 
-codex review - < "$PROMPT"
-rm -f "$PROMPT"
+  codex review - < "$PROMPT" &
+  rm -f "$PROMPT"
+done
+wait
 ```
 
-### 4-3. レビュー結果の解析
+各カテゴリのcodexプロセスをバックグラウンドで並列実行し、`wait`で全完了を待つ。
 
-- **LGTM（またはアクショナブルな指摘なし）**: Phase 5 へ
+### 4-3. レビュー結果の統合
+
+全エージェントの結果を統合する:
+
+```
+=== Design Review Results ===
+| # | 観点 | 結果 |
+|---|------|------|
+| 1 | architecture | LGTM / <N>件 |
+| 2 | db-performance | LGTM / <N>件 |
+| 3 | validation-error | LGTM / <N>件 |
+| 4 | security | LGTM / <N>件 |
+| 5 | type-safety | LGTM / <N>件 |
+| 6 | state-management | LGTM / <N>件 |
+| 7 | test-design | LGTM / <N>件 |
+| 8 | dry-organization | LGTM / <N>件 |
+| 9 | quality-checklist | LGTM / <N>件 |
+
+指摘一覧:
+<全エージェントの指摘をまとめて表示>
+```
+
+- **全エージェント LGTM**: Phase 5 へ
 - **指摘あり**: 設計書を修正し、再レビュー
 
 ### 4-4. 設計書修正（サブエージェント）
