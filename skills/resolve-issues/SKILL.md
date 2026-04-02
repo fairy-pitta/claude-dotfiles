@@ -269,7 +269,7 @@ prompt: |
 
 ## Next Steps
 - 各 PR は `/review-loop` でレビューできます
-- 失敗した Issue は `/triage-issue <URL>` で個別に対応できます
+- 失敗した Issue は手動で個別に対応できます
 ```
 
 ---

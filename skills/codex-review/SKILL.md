@@ -1,6 +1,6 @@
 ---
 name: codex-review
-description: コードレビューを非インタラクティブに実行するスキル。coderabbit-review または sora-review スタイルの指示でレビューを行う。（デフォルト: CC Agent、--codex で codex CLI）
+description: コードレビューを非インタラクティブに実行するスキル。backend-coderabbit / frontend-coderabbit チェックリストに基づいてレビューを行う。（デフォルト: CC Agent、--codex で codex CLI）
 ---
 
 # Codex Review
@@ -17,11 +17,9 @@ description: コードレビューを非インタラクティブに実行する�
 USE_CODEX = "--codex" in $ARGUMENTS
 ```
 
-## Review Style Selection
+## Review Style
 
-ユーザーがスタイルを指定していない場合は確認する:
-- **coderabbit**: フォーマル・体系的・包括的（デフォルト）
-- **sora**: カジュアル・直接的・会話的
+backend-coderabbit / frontend-coderabbit チェックリストに基づくフォーマル・体系的レビューを行う。
 
 ## Step 1-A: Claude Code Agent（デフォルト）
 
@@ -34,7 +32,7 @@ prompt: |
 
   ## タスク
   1. プロジェクトの CLAUDE.md を読む
-  2. レビュースタイルファイルを読む: ~/.claude/skills/<coderabbit-review or sora-review>/SKILL.md
+  2. チェックリストを読む: ~/.claude/skills/backend-coderabbit/ および ~/.claude/skills/frontend-coderabbit/
   3. 以下のコマンドで差分を取得:
      git diff origin/dev...HEAD
   4. レビュースタイルに従ってレビューを実行する
@@ -52,11 +50,8 @@ prompt: |
 # スタイルに応じて SKILL.md を選択
 STYLE="coderabbit"  # または "sora"
 
-if [ "$STYLE" = "sora" ]; then
-  SKILL_FILE="$HOME/.claude/skills/sora-review/SKILL.md"
-else
-  SKILL_FILE="$HOME/.claude/skills/coderabbit-review/SKILL.md"
-fi
+SKILL_DIR="$HOME/.claude/skills"
+# backend-coderabbit / frontend-coderabbit のチェックリストを使用
 
 # CLAUDE.md + SKILL.md を結合してプロンプト作成
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX)
@@ -65,7 +60,8 @@ cat /Users/wao_singapore/forval-crossgear/CLAUDE.md >> "$PROMPT_FILE"
 echo "" >> "$PROMPT_FILE"
 echo "---" >> "$PROMPT_FILE"
 echo "" >> "$PROMPT_FILE"
-cat "$SKILL_FILE" >> "$PROMPT_FILE"
+cat "$SKILL_DIR/backend-coderabbit/checklists/"*.md >> "$PROMPT_FILE"
+cat "$SKILL_DIR/frontend-coderabbit/checklists/"*.md >> "$PROMPT_FILE"
 ```
 
 ## Step 2: Run Codex Review（--codex 指定時のみ）
@@ -105,7 +101,7 @@ Codex の出力をそのまま表示する。
 ```bash
 CLAUDE_MD="/Users/wao_singapore/forval-crossgear/CLAUDE.md"
 CODERABBIT_YAML="/Users/wao_singapore/forval-crossgear/coderabbit.yaml"
-SKILL_FILE="$HOME/.claude/skills/coderabbit-review/SKILL.md"
+SKILL_DIR="$HOME/.claude/skills"
 
 # coderabbit.yaml があれば追加する
 CR_YAML_ARG=""
@@ -114,7 +110,8 @@ CR_YAML_ARG=""
 coderabbit review --plain --base dev \
   -c "$CLAUDE_MD" \
   $CR_YAML_ARG \
-  -c "$SKILL_FILE"
+  -c "$SKILL_DIR/backend-coderabbit/checklists/architecture.md" \
+  -c "$SKILL_DIR/frontend-coderabbit/checklists/fsd-architecture.md"
 ```
 
 ## Notes
