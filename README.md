@@ -32,42 +32,44 @@ cd ~/.claude/claude-dotfiles
 
 ### コードレビュー系
 
-| コマンド               | 説明                                                        |
-| ---------------------- | ----------------------------------------------------------- |
-| `/backend-coderabbit`  | Backend専用レビュー（Django/DDD/Clean Architecture）        |
-| `/frontend-coderabbit` | Frontend専用レビュー（Vue 3/TypeScript/FSD/TanStack Query） |
-| `/sora-review`         | カジュアルスタイルのコードレビュー（lits0ra風）             |
-| `/reviewer`            | レビュー実行後、PRにインラインコメントとして投稿            |
-| `/self-review`         | 全レビュースキルを順番に実行し、指摘ゼロまでループ          |
-| `/review-loop`         | backend/frontend-coderabbit を繰り返し実行し全指摘を解消    |
-| `/codex-review`        | Codex CLIによる非インタラクティブレビュー                   |
+| コマンド        | 説明                                                     |
+| --------------- | -------------------------------------------------------- |
+| `/backend-review`  | Backend専用レビュー（Django/DDD/Clean Architecture）5並列 |
+| `/frontend-review` | Frontend専用レビュー（Vue 3/TypeScript/FSD/TanStack Query）5並列 |
+| `/reviewer`        | レビュー実行後、PRにインラインコメントとして投稿         |
+| `/self-review`     | 全工程エージェント委託。REVIEW→TRIAGE→FIX→COMMITを指摘ゼロまでループ |
+| `/review-loop`     | backend/frontend-review を繰り返し実行し全指摘を解消     |
+| `/codex-review`    | 非インタラクティブレビュー（CC Agent / codex CLI）       |
 
 ### PR・GitHub連携系
 
-| コマンド               | 説明                           |
-| ---------------------- | ------------------------------ |
-| `/create-pr`           | PRを作成                       |
-| `/iterate-pr`          | PRの未解決コメントを取得し対応 |
-| `/read-pr-comments`    | PRの未解決コメントを読み取り   |
-| `/resolve-comments`    | PRレビュースレッドを解決       |
-| `/fix-review`          | レビュー指摘を修正（1回）      |
-| `/fix-and-learn`       | PRコメントを修正しつつ学習     |
+| コマンド             | 説明                                        |
+| -------------------- | ------------------------------------------- |
+| `/create-pr`         | PR作成＋Notion連携＋VRTスナップショット     |
+| `/iterate-pr`        | PRの未解決コメントを取得→判断→修正フルループ |
+| `/resolve-comments`  | 対応済みPRレビュースレッドを解決            |
+| `/pr-watch`          | PR自動監視・CodeRabbit承認まで修正ループ    |
+| `/link-notion`       | Notionタスクとの双方向リンク                |
+| `/capture-ui`        | VRTスナップショット差分をPRにアップロード   |
 
 ### Git操作系
 
-| コマンド           | 説明                                   |
-| ------------------ | -------------------------------------- |
-| `/commit-push`     | コミット＆プッシュ（squash/amend/new） |
-| `/push`            | 現在のブランチをリモートにプッシュ     |
-| `/create-worktree` | Git worktreeを作成                     |
+| コマンド              | 説明                                         |
+| --------------------- | -------------------------------------------- |
+| `/commit-push`        | コミット＆プッシュ（squash/amend/new）       |
+| `/push`               | 現在のブランチをリモートにプッシュ           |
+| `/create-worktree`    | Git worktreeを作成                           |
+| `/cleanup-worktrees`  | マージ済みworktreeを検出し一括削除           |
 
 ### 開発サイクル系
 
-| コマンド                 | 説明                                                            |
-| ------------------------ | --------------------------------------------------------------- |
-| `/full-cycle`            | Plan作成→Codex検証→実装→レビュー→修正→コミット→PR作成を一気通貫 |
-| `/frontend-architecture` | CODING_STANDARDS.md の全項目を並列チェック                      |
-| `/process-scans`         | スキャンPDFの分類・整理ワークフロー                             |
+| コマンド          | 説明                                                  |
+| ----------------- | ----------------------------------------------------- |
+| `/codex-plan`     | Plan作成→レビューループ→ユーザー承認→実装             |
+| `/resolve-issues` | GitHub Issuesから並列にworktreeで調査→実装→PR作成     |
+| `/test`           | テスト実行＋失敗時の自動修正（pytest / vitest対応）   |
+| `/status`         | ブランチ・PR・worktree・stashの一覧表示              |
+| `/process-scans`  | スキャンPDFの分類・整理ワークフロー                   |
 
 ### 共有リファレンス (`references/`)
 
