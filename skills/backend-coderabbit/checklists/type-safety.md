@@ -10,15 +10,16 @@
 
 ### Type Safety
 
-- [ ] **型ヒント必須・Any禁止** — すべての関数・メソッドに型ヒントを付与。`Any`型は禁止 → `Protocol`/`TypedDict`/`Generic`で代替
-- [ ] **Result型タプルアンパック** — `result, error = usecase.execute()`の形式が必須。`.error`属性アクセス禁止
-- [ ] **`_`でエラー無視はNG** — `value, _ = usecase.execute()`でエラーを捨てると認可チェックが消える。必ずエラーを変数に受けてチェック（→ `references/code-examples.md`）
-- [ ] **Enum必須** — ステータス値・カテゴリ値に文字列リテラル禁止。`TextChoices`/`IntegerChoices`を使用
-- [ ] **エラー型判定** — Result型のエラーを文字列比較で分岐していないか確認する。UseCase層で例外型を分類している場合はisinstanceで型判定すべき。文字列比較はメッセージ定数の変更で分岐が壊れるリスクがある
-- [ ] **bool⊂int型チェック** — isinstance(x, int)によるバリデーション箇所でboolが通過しないか確認する。Pythonではboolはintのサブクラスのため、isinstance(True, int)がTrueを返す。intチェックの前にisinstance(x, bool)で排除する
-- [ ] **同一型の重複定義禁止** — 型の中身が既存の型と同一なのに別名で新たに定義していないか確認する。既存の型定義を検索し、同等の構造がすでにあれば再利用すること
-- [ ] **エッジケースの考慮** — 境界値・ゼロ・空・None等のエッジケースが考慮されているか。`<=` vs `<`の取り違え、off-by-oneエラー等に注意
-- [ ] **データアクセスの正当性** — 属性・キー・IDへのアクセスが実行時に正当か確認する。関連オブジェクトが存在しない場合のAttributeError/KeyError、外部キーの参照先が削除されているケース等
+- [ ] **型ヒント必須・Any禁止** — すべての関数・メソッドに型ヒントを付与。`Any`型は禁止し`Protocol`/`TypedDict`/`Generic`で代替。`# type: ignore[return]`等での型チェック回避もNG。例: `QuerySet[Model]`の戻り値型を明示する
+- [ ] **Result型タプルアンパック・エラー無視禁止** — `result, error = usecase.execute()`の形式が必須で`.error`属性アクセスは禁止。`value, _ = ...`でエラーを捨てると認可チェックが消えるため、必ずエラーを変数に受けてチェックする（→ `references/code-examples.md`）
+- [ ] **Enum必須・基底型禁止** — ステータス値・カテゴリ値に文字列リテラルを使わず`TextChoices`/`IntegerChoices`を使用。Enum値を受け取る引数を基底型(str/int)でアノテーションしない。例: 任意値の通過を防ぐためEnum型でアノテーションする
+- [ ] **エラー型は型・種別で判定** — Result型のエラーを文字列比較で分岐しない（メッセージ定数変更で分岐が壊れる）。UseCase層で例外を分類する場合はisinstanceで型判定し、メッセージやカスタム例外で具体的なエラー種別まで識別する。一律マッピングは原因隠蔽を招く
+- [ ] **bool⊂int型チェック** — `isinstance(x, int)`によるバリデーションでboolが通過しないか確認。Pythonでは`isinstance(True, int)`がTrueを返すため、intチェックの前に`isinstance(x, bool)`で排除する
+- [ ] **同一型の重複定義禁止** — 既存の型と同一構造なのに別名で再定義していないか確認。既存の型定義を検索し、同等の構造があれば再利用する
+- [ ] **エッジケース・境界値の考慮** — ゼロ・空・None等のエッジケース、`<=` vs `<`の取り違え、off-by-oneエラーが考慮されているか
+- [ ] **データアクセスの実行時正当性** — 属性・キー・IDへのアクセスが実行時に正当か確認。関連オブジェクト不在時のAttributeError/KeyError、外部キー参照先が削除されているケース等
+- [ ] **バリデーション実行順序・ガード後の変換** — 削除・更新等の副作用やDB参照・重い処理の前にバリデーション（存在確認・権限確認・値域）を先行させる。`int()`等の型変換は妥当性検証(ガード節)の後に配置し、非数値文字列での`ValueError`を防ぐ。正規化・変換後は結果が有効か再検証する
+- [ ] **コメント衛生** — コメントが実装と乖離していないか。docstringに記載した戻り値型が実装と一致しているか（特にResult型でエラーバリアントを追加した場合はdocstringも更新する）
 
 ---
 
@@ -26,53 +27,32 @@
 
 ### Type Safety（詳細）
 
-- **ドメインエンティティのEnum型引数の実行時型検証** — `create()`等のファクトリメソッドでEnum型パラメータを受け取る場合、`isinstance(x, SomeEnum)` の実行時チェックがあるか。型ヒントだけでは実行時に文字列が通り抜ける
-- **Serializer/Domainモデルフィールド不一致** — APIレスポンスのフィールド名がDomainエンティティと整合しているか
-- **QuerySet 戻り値型の明示** - `# type: ignore[return]` で型チェックを回避していないか確認。CLAUDE.md「型ヒント必須」に従い `QuerySet[Model]` の戻り値型を明示すること。
-- **Serializer SerializerMethodField の戻り値型精度** - `SerializerMethodField` のメソッドで `Optional[str]` を返しているが、渡すフィールドが non-Optional な場合は `str` に絞れる。エンティティのフィールド定義と照合して型精度を上げること。
-- **EventStream型定義の網羅性** — AWS Bedrock等の外部サービスのストリームイベント型が、チャンクだけでなく例外イベント型も含んでいるかチェック。TypeDictのtotal=Falseの適切な使用。
-- **DTO型とUseCase分岐の一致性** — UseCaseで条件分岐する場合、DTOの型がその分岐を反映しているかチェック。Optionalで済ませずUnion型で意図を明示する
-- **テストヘルパーの型ヒント精度** — テストヘルパー関数の引数型がドメインエンティティやリクエスト型の実際のフィールド型と一致しているか確認する。`object`のような広すぎる型はテストの型安全性を損なう。ドメイン型に合わせて`UUID | None`等の具体型を使う
+- **Enum型引数の実行時型検証** — `create()`等のファクトリで Enum 型パラメータを受け取る場合、`isinstance(x, SomeEnum)`の実行時チェックがあるか。型ヒントだけでは実行時に文字列が通り抜ける
+- **SerializerとDomainモデルの整合・型精度** — APIレスポンスのフィールド名がDomainエンティティと整合しているか。`SerializerMethodField`の戻り値型が、渡すフィールドのOptional性に合わせて精度高く絞られているか（例: non-Optionalなら`str`に絞る）
+- **DTO型・TypedDictの網羅性と分岐一致** — UseCaseで条件分岐する場合、DTO型がその分岐を反映しているか（Optionalで済ませずUnion型で意図を明示）。外部サービスのストリームイベント型（例: AWS Bedrock）が例外イベント型も含むか、`TypedDict`の`total=False`が適切か。`TypedDict`の各フィールドの全状態値（特にbool型のTrue/False両方）を生成するコードパスが存在するか
+- **テストヘルパーの型ヒント精度** — テストヘルパー関数の引数型がドメインエンティティやリクエスト型の実フィールド型と一致しているか。`object`等の広すぎる型を避け、`UUID | None`等の具体型を使う
+- **`*args`/`**kwargs`の型注釈** — `*args: T`は「各引数がT型」を意味する。`*args: tuple[...]`や`**kwargs: dict[...]`はコンテナ型を要素型に指定する誤り。正しくは`*args: object, **options: object`とし、個別値は`cast()`で絞り込む
+- **Factory戻り値の型注釈** — `UserFactory()`の戻り値を`UserFactory`型で注釈しない。Factoryは生成物の型（`User`）を返す
+- **Enum分岐の網羅性** — if/elif/elseでEnumを分岐する際、elseで「残り全て」を暗黙処理していないか。バリアント追加時に誤動作するため、明示的に全バリアントを分岐し未知値は例外にする
 
 ### Validation & Error Handling（詳細）
 
-- **バリデーション実行順序** — 削除・更新処理の前にバリデーションが実行されているか。副作用の後にチェックをしていないか
-- **正規化後の再バリデーション** — 入力値を正規化・変換した後に結果が有効か再検証しているか
-- **validate\_\<field\>サニタイズ後の空文字チェック** — validate*\<field\>メソッドで制御文字除去・trim等のサニタイズを行う場合、サニタイズ後の値が空文字になるケースを考慮しているか確認する。DRFのallow_blank/requiredチェックはvalidate*\<field\>より先に実行されるため、サニタイズ後の空文字はDRFでは検出できない。明示的な空文字チェックとValidationErrorの発生が必要
-- **年の範囲チェック** — `year <= 0`のみで1900-9999の範囲チェックが漏れていないか（→ `references/code-examples.md`）
-- **frozen dataclassの`__post_init__`バリデーション** — 不正な値でインスタンスが作られないよう、`item_name`の非空・`year`の範囲等を`__post_init__`内で`ValidationError`を使って検証（→ `references/code-examples.md`）
-- **frozen dataclass不変条件の網羅性** — **post_init**で全フィールドがバリデーションされているか確認する。特にプリミティブ型(int, str)は型ヒントがあるだけでは不十分。エンティティの全属性に対して不変条件検証が必要
-- **エンティティ不変条件の空白チェック** — ドメインエンティティの `__post_init__` で `not self.field` ではなく `not self.field.strip()` を使っているか確認。空白のみ入力を通過させるバグを防ぐ。エラーメッセージが定数化されているかも併せて確認
-- **`from_string()`/enum変換の入力型チェック** — `isinstance(value, str)` チェックがないと`int`や`None`で`AttributeError`になる（→ `references/code-examples.md`）
-- **`reconstruct()`でのUUID型不変条件の未検証** — `isinstance(field, UUID)` チェックがないとDB破損データがDomainに混入する
-- **`reconstruct()` 内 Enum 変換の例外保護** — `SomeEnum(value)` 形式の Enum 変換は不正な値で `ValueError` を送出する。`reconstruct()` 内で変換する場合は `try/except ValueError` で保護し、エラーを明示的に再送出すること。Repository の `except DatabaseError` では `ValueError` は捕捉されないため Result 契約が崩れる
-- **Repository の except 節での ValueError 捕捉** — `except DatabaseError as exc: return failure(exc)` は mapper 由来の `ValueError` を捕捉しない。mapper（`model_to_entity` 等）が送出する例外も Result に包むため `except (DatabaseError, ValueError) as exc:` にすること
-- **例外チェーンの `from exc`** — `except ValueError as exc: raise ... from exc` パターンを使用しているか確認。`from exc` がないとトレースバック情報が失われデバッグ困難になる
-- **エラーメッセージと正規表現の整合性** — エラーメッセージに記載した許容値範囲が実際の`RegexValidator`パターンと一致しているか
-- **月文字列のint変換による形式ロス** — MM形式の月文字列をint()変換して再ゼロパディングするパターンを検出する。「1」→1→「01」の暗黙正規化で入力バリデーションが無効化される。月操作はstr→str変換で行うべき
-- **UseCase層の引数整合性ガード** — 引数間の依存関係がある場合（例: category_typeとsub_category_id/large_item_id）、UseCase層でも防御的に検証しているかチェックする。Presentation層でバリデーションしていてもUseCase層は独立したインターフェースとして整合性を保証すべき。引数の組み合わせ制約はUseCase.execute()の冒頭でガードする
-- **UseCaseの値域検証** - UseCaseでIDパラメータの`None`チェックに加えて値域（`<= 0`など）の検証も行っているか。View層で検証されていてもUseCaseは独立したビジネスロジック単位として自己完結すべきなため、直接呼び出し経路でも不正入力を拒否できるよう値域検証を追加すること。
-- **Presentation層のエラーメッセージ定数化** - ヘルパー関数内の`raise ValueError(f"...")`等のインラインエラーメッセージが定数化されているか。CLAUDE.mdルール「エラーメッセージ定数化」に従い、`SummaryErrors`等の定数クラス経由にすること。またPresentationヘルパーで発生する例外はView層でキャッチして`ApiResponse.error`に変換すること。
-- **assert文の本番使用禁止** — python -Oで無効化されるassertをバリデーションに使っていないかチェック。明示的なif文+エラーレスポンスに置き換える。
-- **SSEジェネレータの例外捕捉範囲チェック** — ストリーミングレスポンスのジェネレータでは、特定例外のみ捕捉すると他の例外でストリームが無言で途切れる。GeneratorExit以外を包括的に捕捉し、クライアントにエラーイベントを送信すること
-- **エラー種別の識別精度** — isinstanceだけでなく、エラーメッセージやカスタム例外で具体的なエラー種別を判別しているか確認する。一律マッピングは原因隠蔽を招き、ユーザーに不適切なエラーメッセージが返される
-- **キャッシュロック解放漏れ** — キャッシュロック取得後〜ストリーム開始前の同期コードで例外が発生した場合のロック解放を確認する。try/exceptで保護しないとロックが残存し、TTL期限までリクエストがブロックされる
-- **入力IDの早期バリデーション** — View で外部入力（session_id 等のID参照）を受け取る場合、DB参照・ペイロード構築等の重い処理の前に軽量なバリデーション（存在確認・権限確認）を先行させているかをチェックする。無効な入力で重い処理が走るとリソースの無駄になる
-- **不要な例外catchの検出** — try-except句で実際にraiseされない例外型をcatchしていないか。fail_with_rollbackでResult型として返される例外はexcept句に不要。catchする例外は実際の発生源と照合して必要最小限に
-- **例外変換時のメッセージ保持** — 例外変換時に元のエラーメッセージを破棄していないか。デバッグ時の原因特定のため、元例外のメッセージはできる限り保持する
-- **リトライ間隔パラメータの最小値バリデーション** — リトライ間隔パラメータの最小値バリデーション。0を許可すると即時リトライによる無限ループやリソース飢餓が発生する可能性がある。リトライ系パラメータは最低1秒以上を強制。
-- **同一usecase内の複数分岐のエラーハンドリング統一** — 同一usecase内の複数分岐で同じドメインメソッドを呼ぶ場合、全分岐でエラーハンドリングが統一されているかチェック。一方の分岐だけtry-exceptがない場合、Result契約を破る。
-- **同一エラーコードの例外型統一** — 同じエラーコード（例: `NOT_APPLICANT`）を複数usecaseで返す場合、例外型まで統一されているか確認する。`ValidationError` と `PermissionDeniedError` の混在は API の HTTP ステータス差異を生み、呼び出し側を不安定にする。
-- **DRFの内部APIアクセス検出** — DRFの `_declared_fields` や `_meta` 等のアンダースコア接頭辞属性を直接操作していないかチェック。バージョンアップで互換性が壊れるリスクがある。継承 + `get_fields()` オーバーライドで代替する
-- **条件付き必須フィールドの検出** — あるフィールドの値によって他フィールドの必須/不要が変わるケースで、常時requiredにしていないかチェック。`validate()` メソッドで条件分岐する
-- **入力変換はガード後に配置** `[新観点 from PR#614]` — `int()` や型変換は、対象値の妥当性検証（ガード節）の後に配置する。ガード前に変換すると非数値文字列で `ValueError` が発生する。入力バリデーション関数が上流で検証済みでも、変換の位置はガード節の後に統一する。
-- **Result型とraise混在** `[新観点 from PR#622]` — Result型を返す関数内で例外をraiseしていないか確認する。タプルアンパック前提の呼び出し側で捕捉できず500になる
-- **TextChoices/IntegerChoicesのEnum型アノテーション** `[新観点 from PR#622]` — TextChoices/IntegerChoicesのEnum値を受け取る引数を基底型（str/int）でアノテーションしていないか確認する。基底型だとEnum以外の任意値が通り、コードの意図も不明確になる。Enum型でアノテーションすること
-- **Enum分岐の網羅性** `[新観点 from PR#622]` — if/elif/elseでEnumを分岐する際、elseが「残り全て」を暗黙処理していないか確認。Enumにバリアントが追加された場合に誤動作する。明示的に全バリアントを分岐し、未知値は例外にする
-- **TypedDictフィールドの全状態カバレッジ** `[新観点 from PR#633]` — TypedDictに定義した各フィールドの全状態値（特にbool型のTrue/False両方）を生成するコードパスが存在するか確認。定義だけして生成パスが欠落すると、集計・表示ロジックが実態とずれる。
-- **`*args`/`**kwargs`の型注釈** `[新観点 from PR#633]` — `*args: T`は「各引数がT型」を意味する。`*args: tuple[...]`や`**kwargs: dict[...]`はコンテナ型を各要素の型として指定してしまう誤り。正しくは`*args: object, **options: object`とし、個別値は`cast()`で絞り込む。
-- **docstringと実装の戻り値型一致** `[新観点 from PR#624]` — 関数のdocstringに記載した戻り値型が実装と一致しているか確認する。特にResult型でエラーバリアントを追加した場合、docstringも更新する。戻り値パターンを変更したらdocstringも同時に修正する。
-- **エラー型とHTTPステータスコードのマッピング** `[新観点 from PR#624]` — `ApiResponse.error()` のマッピングテーブルに存在しないエラー型（例: `ValueError`）を使っていないか確認する。`ValidationError` → 400、`PermissionDeniedError` → 403 等の対応を意識する。
-- **Factory戻り値の型注釈** `[新観点 from PR#624]` — `UserFactory()` の戻り値を `UserFactory` 型で注釈しない。Factoryは生成物の型（`User`）を返す。
-- **except Exception でエラーを潰していないか** `[新観点 from PR#689]` — Result型を返すusecaseで catch all が Sentry 検知を妨げるケース。ValidationError等の特定例外のみcatchし、DatabaseError等はバブルアップさせること。
-- **Feature 間の直接依存がないか** `[新観点 from PR#689]` — 通常Feature間でconcrete型を直接importしていないか。Protocol/shared経由になっているか確認。
+- **frozen dataclass / エンティティ不変条件の網羅** — `__post_init__`で全フィールドの不変条件を検証しているか。プリミティブ型(int, str)も型ヒントだけでは不十分。非空チェックは`not self.field`ではなく`not self.field.strip()`で空白のみ入力を弾く。エラーメッセージが定数化されているかも確認（例: `item_name`非空・`year`範囲）（→ `references/code-examples.md`）
+- **`reconstruct()`/変換系の入力型・例外保護** — `from_string()`やenum変換で`isinstance(value, str)`チェックがないと`int`/`None`で`AttributeError`になる。`reconstruct()`では`isinstance(field, UUID)`等の型不変条件を検証しDB破損データの混入を防ぐ。`SomeEnum(value)`は不正値で`ValueError`を送出するため`try/except ValueError`で保護し明示的に再送出する（→ `references/code-examples.md`）
+- **Repositoryのexcept節でのmapper例外捕捉** — `except DatabaseError as exc: return failure(exc)`はmapper（`model_to_entity`等）由来の`ValueError`を捕捉しない。`except (DatabaseError, ValueError) as exc:`にしてResult契約を保つ
+- **例外チェーンの`from exc`** — `except ... as exc: raise ... from exc`を使用しているか。`from exc`がないとトレースバック情報が失われデバッグ困難になる
+- **例外変換時のメッセージ保持** — 例外変換時に元のエラーメッセージを破棄していないか。原因特定のため元例外メッセージはできる限り保持する
+- **エラーメッセージと検証パターンの整合** — エラーメッセージに記載した許容値範囲が実際の`RegexValidator`パターンや年の範囲チェック（例: `year <= 0`のみで1900-9999が漏れていないか）と一致しているか（→ `references/code-examples.md`）
+- **validate_<field>サニタイズ後の空文字チェック** — `validate_<field>`で制御文字除去・trim等のサニタイズを行う場合、サニタイズ後の空文字を考慮しているか。DRFの`allow_blank`/`required`チェックは`validate_<field>`より先に実行されるため、明示的な空文字チェックと`ValidationError`発生が必要
+- **月文字列のint変換による形式ロス** — MM形式の月文字列を`int()`変換して再ゼロパディングするパターン（「1」→1→「01」）は入力バリデーションを無効化する。月操作はstr→str変換で行う
+- **UseCase層の自己完結した検証** — UseCaseは独立したインターフェースとして自己完結すべき。Presentation/View層で検証済みでも、引数間の依存関係（例: category_typeとsub_category_id）の整合性ガードと値域検証（`<= 0`等）をUseCase.execute()冒頭で行う
+- **Presentation層のエラーメッセージ定数化・変換** — ヘルパー関数内のインライン`raise ValueError(f"...")`を定数クラス（例: `SummaryErrors`）経由にする。Presentationヘルパーで発生する例外はView層でキャッチし`ApiResponse.error`に変換する
+- **エラー型とHTTPステータスのマッピング統一** — `ApiResponse.error()`のマッピングに存在しないエラー型（例: `ValueError`）を使っていないか（`ValidationError`→400、`PermissionDeniedError`→403等）。同じエラーコード（例: `NOT_APPLICANT`）を複数usecaseで返す場合は例外型まで統一し、HTTPステータスの差異を防ぐ
+- **assert文の本番使用禁止** — `python -O`で無効化されるassertをバリデーションに使わない。明示的なif文+エラーレスポンスに置き換える
+- **Result型とraise混在の禁止** — Result型を返す関数内で例外をraiseしていないか。タプルアンパック前提の呼び出し側で捕捉できず500になる。同一usecase内の複数分岐で同じドメインメソッドを呼ぶ場合、全分岐でエラーハンドリングを統一しResult契約を保つ
+- **except Exception でエラーを潰さない** — Result型を返すusecaseのcatch allはSentry検知を妨げる。`ValidationError`等の特定例外のみcatchし、`DatabaseError`等はバブルアップさせる。実際にraiseされない例外型をcatchしていないか（`fail_with_rollback`でResult化される例外はexcept不要）も確認し、catchは必要最小限にする
+- **SSEジェネレータの例外捕捉範囲** — ストリーミングのジェネレータで特定例外のみ捕捉すると他例外でストリームが無言で途切れる。`GeneratorExit`以外を包括的に捕捉し、クライアントにエラーイベントを送信する
+- **キャッシュロック解放漏れ** — ロック取得後〜ストリーム開始前の同期コードで例外発生時のロック解放を確認。try/exceptで保護しないとTTL期限までリクエストがブロックされる
+- **リトライ間隔パラメータの最小値バリデーション** — 0を許可すると即時リトライによる無限ループやリソース飢餓が発生しうる。リトライ系パラメータは最低1秒以上を強制する
+- **条件付き必須フィールドの検出** — あるフィールドの値で他フィールドの必須/不要が変わるケースで常時requiredにしていないか。`validate()`メソッドで条件分岐する
+- **DRFの内部APIアクセス検出** — `_declared_fields`や`_meta`等のアンダースコア接頭辞属性を直接操作していないか。バージョンアップで互換性が壊れるため、継承+`get_fields()`オーバーライドで代替する
