@@ -23,9 +23,9 @@ Vue 3 + TypeScript + FSD (Feature-Sliced Design) + TanStack Vue Query のフロ�
 5. **Error Handling** - エラーカタログ定数, 4層パイプライン
 6. **Vue.js Patterns** - v-for key安定性, 非同期レースコンディション, Floating Promise
 7. **Test Quality** - MSW, FormData axios adapter, 型安全モック
-8. **Security** - XSS対策, 脆弱ライブラリ（xlsx等）
+8. **Security** - XSS対策, 脆弱ライブラリ（xlsx等）, 秘密情報をAPI型/スキーマに含めない
 9. **Unused Code Detection** - 未使用composable・型・import
-10. **Code Organization & DRY** - コンポーネント分割, @pages/エイリアス
+10. **Code Organization & DRY** - コンポーネント分割, @pages/エイリアス, 会話文脈・実装履歴コメントの削除
 11. **Syntax & Basic Quality** - TS構文エラー, `<script setup lang="ts">`必須
 
 ## 使用方法
