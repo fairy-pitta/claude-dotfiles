@@ -61,3 +61,11 @@ def test_it_works() -> None: ...
 - Always run tests before committing. If any fail, fix before commit.
 - Run linters/formatters after edits (auto-format hook handles this).
 - Add type hints to new code (Python: full type annotations, TypeScript: strict mode).
+
+## Comments
+
+- Delete comments that only make sense with external context the code reader doesn't have:
+  - **Conversation context** — anything that only makes sense inside the AI-agent chat (e.g. `# 指摘により修正`, `# リクエスト通り`, `// as requested`, `// per review`).
+  - **Implementation history** — comparisons with a previous version (e.g. `# 旧実装ではforループ`, `// changed from useState`, `# N+1を解消`).
+  - **Context-less comments** — comments whose intent cannot be understood by reading the code alone (PR/diff/conversation-dependent notes).
+- Keep comments that explain **why** the code is the way it is for a future reader. The rule removes change-narration, not genuine intent documentation.
