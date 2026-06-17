@@ -8,6 +8,7 @@
 |---|---|
 | backend-coderabbit | `backend/` に変更がある場合 |
 | frontend-coderabbit | `frontend/` に変更がある場合 |
+| design-principles | スタック別（言語非依存: SOLID / デメテルの法則 / クリーンコード）。`backend/`・`frontend/` それぞれに1つ、両方変更時は2つ起動 |
 
 ## フロー
 

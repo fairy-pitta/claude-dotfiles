@@ -74,10 +74,11 @@ git diff --name-only origin/dev...HEAD
 
 #### 1-A: Claude Code Agent（デフォルト）
 
-**最大11個の Agent tool を単一メッセージで並列起動する。**
+**最大13個の Agent tool を単一メッセージで並列起動する。**
 
 - **Backend（HAS_BACKEND の場合）:** architecture, type-safety, db-performance, test-quality, security-errors の5つ
 - **Frontend（HAS_FRONTEND の場合）:** fsd-architecture, type-state, error-vue, tanstack-security, test-quality の5つ
+- **Design（言語非依存・スタック別）:** SOLID / デメテルの法則 / クリーンコード。HAS_BACKEND で `backend/` 用に1つ、HAS_FRONTEND で `frontend/` 用に1つ。**両方変更時は2つ起動する**（フロントとバックを別エージェントで見る）
 - **General（常時）:** 1つ
 
 各チェックリスト Agent:
@@ -100,6 +101,25 @@ prompt: |
   指摘なしの場合: "No findings."
 ```
 
+Design Agent（スタック別・言語非依存）— HAS_BACKEND/HAS_FRONTEND ごとに起動。**両方変更時は backend 用・frontend 用の2つを起動する**:
+
+```
+description: "review: design-<be/fe>"
+prompt: |
+  あなたは設計品質（SOLID / デメテルの法則 / クリーンコード）専門のレビューサブエージェントです。担当スタック: <backend or frontend>
+
+  ## タスク
+  1. プロジェクトの CLAUDE.md を読む
+  2. チェックリストファイルを読む: ~/.claude/skills/design-principles/checklists/design-principles.md
+  3. 以下のコマンドで担当スタックの差分のみを取得:
+     git diff origin/dev...HEAD -- <backend/ or frontend/>
+  4. チェックリストに沿って担当スタックの差分をレビューする。バグ検出はしない（設計品質のみ）。既存スタックチェックリストと重複する観点は二重指摘しない
+
+  出力フォーマット:
+  | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |
+  指摘なしの場合: "No findings."
+```
+
 General Agent:
 
 ```
@@ -112,7 +132,8 @@ prompt: |
   2. .claude/plan.md があれば読む
   3. 以下のコマンドで差分を取得:
      git diff origin/dev...HEAD
-  4. 全体的な観点（設計整合性、命名、プラン通りの実装か）でレビューする
+  4. 全体的な観点（設計整合性、命名、プラン通りの実装か、コメントの妥当性）でレビューする
+     - コメント観点: 次のコメントは「削除すべき」として指摘する。①AIエージェントとの会話内でしか得られない文脈（「指摘により修正」「リクエスト通り」等）、②以前の実装との比較・変更経緯（「旧実装では〜」「N+1を解消」等）、③コード単体を読んで意図が伝わらない（PR/diff/会話に依存する）コメント。意図（なぜそうあるか）を説明する有用なコメントは保持する
 
   出力フォーマット:
   | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Issue |
@@ -166,6 +187,25 @@ for cat in fsd-architecture type-state error-vue tanstack-security test-quality;
     git diff origin/dev...HEAD -- frontend/
   } > "$PROMPT"
   codex review - < "$PROMPT" > "$RESULTS_DIR/fe-${cat}.txt" 2>&1 &
+done
+
+# --- Design principles codex review (スタック別・言語非依存) ---
+# HAS_BACKEND / HAS_FRONTEND ごとに起動。両方変更時は backend/frontend それぞれに対して走る
+for stack in backend frontend; do
+  PROMPT="$RESULTS_DIR/prompt-design-${stack}.txt"
+  {
+    echo "# Project Rules"
+    [ -f "$CLAUDE_MD" ] && cat "$CLAUDE_MD"
+    echo -e "\n---\n# Checklist"
+    cat "$SKILLS_DIR/design-principles/checklists/design-principles.md"
+    echo -e "\n---"
+    echo "Design-quality review (SOLID / Law of Demeter / clean code). Stack: ${stack}/. No bug hunting; design quality only. Report findings only."
+    echo "Output: | # | File:Line | Severity (🔴/🟠/🟡/🔵) | Checklist ID | Issue |"
+    echo 'If no issues: "No findings."'
+    echo -e "\n---\n# Git diff (changes to review)\n"
+    git diff origin/dev...HEAD -- "${stack}/"
+  } > "$PROMPT"
+  codex review - < "$PROMPT" > "$RESULTS_DIR/design-${stack}.txt" 2>&1 &
 done
 
 # --- General codex review (常時) ---
@@ -227,7 +267,10 @@ prompt: |
   ### Step 1: 重複排除
   全 findings をマージし、同じファイル・同じ行・同じ内容の重複を排除する。
 
-  ### Step 2: 妥当性判断
+  ### Step 2: 既知の非対象（false positive）除外
+  `.claude/review-ignore.md` があれば読む。記録済みの「既知の非対象」（過去に意図的設計／事実と異なると確定した指摘）にマッチする finding は、理由付きで除外する（同じ誤検知の再浮上を防ぐ）。
+
+  ### Step 3: 妥当性判断
   各 finding について:
 
   1. **対象コードを Read tool で読む**（必須。コードを読まずに判断しない）
@@ -237,10 +280,12 @@ prompt: |
 
   | 判定 | 基準 |
   |------|------|
-  | **妥当** | バグ・ルール違反・型安全性・命名不備・セキュリティ問題 |
-  | **妥当でない** | 事実と異なる・ルールと矛盾・意図的設計・過剰な指摘・好みの問題 |
+  | **妥当** | バグ・ルール違反・型安全性・命名不備・セキュリティ問題。**チェックリストまたは CLAUDE.md に根拠のある指摘（設計原則=SOLID/デメテル・コメント削除等を含む）はルール違反として「妥当」扱いとし、「好みの問題」で却下しない** |
+  | **妥当でない** | 事実と異なる・ルールと矛盾・意図的設計・過剰な指摘・根拠のない純粋な好みの問題・`.claude/review-ignore.md` に記録済みの既知の非対象 |
 
-  ### Step 3: 結果レポート
+  判定後、「意図的設計」「事実と異なる」として除外し**今後も再浮上しそうなもの**は `.claude/review-ignore.md` に追記する（形式: `- <ファイル/領域> | <対象ルール/観点> | <除外理由>`）。ファイルが無ければ新規作成する。
+
+  ### Step 4: 結果レポート
   以下の形式で返す:
 
   ## Triage Result
